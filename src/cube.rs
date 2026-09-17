@@ -1,16 +1,22 @@
 use crate::ray_intersect::{Intersect, Material, RayIntersect};
 use nalgebra_glm::Vec3;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Cube {
     pub min: Vec3,
     pub max: Vec3,
     pub material: Material,
+    pub top_material: Option<Material>,
 }
 
 impl Cube {
     pub fn new(min: Vec3, max: Vec3, material: Material) -> Self {
-        Cube { min, max, material }
+        Cube { min, max, material, top_material: None }
+    }
+
+    pub fn with_top_material(mut self, top_mat: Material) -> Self {
+        self.top_material = Some(top_mat);
+        self
     }
 }
 
@@ -109,11 +115,17 @@ impl RayIntersect for Cube {
             }
         };
 
+        let material = if normal.y > 0.5 {
+            self.top_material.as_ref().unwrap_or(&self.material).clone()
+        } else {
+            self.material.clone()
+        };
+
         Some(Intersect {
             point,
             normal,
             distance,
-            material: self.material,
+            material,
             u: u.clamp(0.0, 1.0),
             v: v.clamp(0.0, 1.0),
         })
