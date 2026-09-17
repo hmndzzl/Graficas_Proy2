@@ -7,15 +7,48 @@ pub struct Cube {
     pub max: Vec3,
     pub material: Material,
     pub top_material: Option<Material>,
+    pub bottom_material: Option<Material>,
+    pub front_material: Option<Material>,
+    pub back_material: Option<Material>,
+    pub left_material: Option<Material>,
+    pub right_material: Option<Material>,
 }
 
 impl Cube {
     pub fn new(min: Vec3, max: Vec3, material: Material) -> Self {
-        Cube { min, max, material, top_material: None }
+        Cube { 
+            min, max, material, 
+            top_material: None,
+            bottom_material: None,
+            front_material: None,
+            back_material: None,
+            left_material: None,
+            right_material: None,
+        }
     }
 
     pub fn with_top_material(mut self, top_mat: Material) -> Self {
         self.top_material = Some(top_mat);
+        self
+    }
+    pub fn with_bottom_material(mut self, bottom_mat: Material) -> Self {
+        self.bottom_material = Some(bottom_mat);
+        self
+    }
+    pub fn with_front_material(mut self, front_mat: Material) -> Self {
+        self.front_material = Some(front_mat);
+        self
+    }
+    pub fn with_back_material(mut self, back_mat: Material) -> Self {
+        self.back_material = Some(back_mat);
+        self
+    }
+    pub fn with_left_material(mut self, left_mat: Material) -> Self {
+        self.left_material = Some(left_mat);
+        self
+    }
+    pub fn with_right_material(mut self, right_mat: Material) -> Self {
+        self.right_material = Some(right_mat);
         self
     }
 }
@@ -117,6 +150,16 @@ impl RayIntersect for Cube {
 
         let material = if normal.y > 0.5 {
             self.top_material.as_ref().unwrap_or(&self.material).clone()
+        } else if normal.y < -0.5 {
+            self.bottom_material.as_ref().unwrap_or(&self.material).clone()
+        } else if normal.z > 0.5 {
+            self.front_material.as_ref().unwrap_or(&self.material).clone() // +Z
+        } else if normal.z < -0.5 {
+            self.back_material.as_ref().unwrap_or(&self.material).clone()  // -Z
+        } else if normal.x > 0.5 {
+            self.right_material.as_ref().unwrap_or(&self.material).clone() // +X
+        } else if normal.x < -0.5 {
+            self.left_material.as_ref().unwrap_or(&self.material).clone()  // -X
         } else {
             self.material.clone()
         };
