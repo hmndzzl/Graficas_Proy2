@@ -24,6 +24,8 @@ pub struct Intersect {
     pub normal: Vec3,
     pub distance: f32,
     pub material: Material,
+    pub u: f32,
+    pub v: f32,
 }
 
 pub trait RayIntersect {
