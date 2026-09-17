@@ -1,5 +1,6 @@
 mod camera;
 mod color;
+mod cube;
 mod framebuffer;
 mod light;
 mod ray_intersect;
@@ -11,13 +12,14 @@ use std::time::Duration;
 
 use crate::camera::Camera;
 use crate::color::Color;
+use crate::cube::Cube;
 use crate::framebuffer::Framebuffer;
 use crate::light::Light;
 use crate::ray_intersect::{Intersect, Material, RayIntersect};
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
-const BACKGROUND_COLOR: u32 = 0x040C24;
+const BACKGROUND_COLOR: u32 = 0x87CEEB;
 
 const FOV: f32 = PI / 3.0;
 
@@ -57,11 +59,12 @@ pub fn shade(
     let light_direction = (light.position - intersect.point).normalize();
     let view_direction = (ray_origin - intersect.point).normalize();
 
-    let light_intensity = if cast_shadow(intersect, &light_direction, light, objects) {
+    let shadow_intensity = if cast_shadow(intersect, &light_direction, light, objects) {
         0.0
     } else {
-        light.intensity
+        1.0
     };
+    let light_intensity = light.intensity * shadow_intensity;
 
     let diffuse_intensity = dot(&intersect.normal, &light_direction).max(0.0);
     let diffuse = intersect.material.diffuse
@@ -75,7 +78,9 @@ pub fn shade(
     let specular =
         light.color * (specular_intensity * intersect.material.albedo[1] * light_intensity);
 
-    diffuse + specular
+    let ambient = intersect.material.diffuse * 0.15;
+
+    diffuse + specular + ambient
 }
 
 pub fn cast_ray(
@@ -161,22 +166,51 @@ fn main() {
 
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
 
-    let mut window = Window::new("Lakitu", WIDTH, HEIGHT, WindowOptions::default()).unwrap();
+    let mut window = Window::new(
+        "Minecraft Raytracer Diorama",
+        WIDTH,
+        HEIGHT,
+        WindowOptions::default(),
+    )
+    .unwrap();
 
-    let ivory = Material::new(Color::new(100, 100, 80), 50.0, [0.6, 0.3, 0.1]);
-    let rubber = Material::new(Color::new(80, 0, 0), 10.0, [0.9, 0.1, 0.0]);
-    let cobalt = Material::new(Color::new(40, 80, 140), 80.0, [0.7, 0.4, 0.15]);
-    let jade = Material::new(Color::new(60, 130, 100), 30.0, [0.8, 0.25, 0.05]);
-    let slate = Material::new(Color::new(80, 80, 92), 15.0, [0.85, 0.1, 0.2]);
-    let mirror = Material::new(Color::new(255, 255, 255), 1425.0, [0.0, 10.0, 0.85]);
+    let grass_mat = Material::new(Color::new(86, 155, 60), 10.0, [0.8, 0.1, 0.0]);
+    let stone_mat = Material::new(Color::new(125, 125, 125), 15.0, [0.8, 0.1, 0.0]);
+    let gold_mat = Material::new(Color::new(255, 215, 0), 80.0, [0.2, 0.5, 0.6]);
+    let wood_mat = Material::new(Color::new(160, 110, 60), 10.0, [0.8, 0.1, 0.0]);
 
-    let objects: Vec<Box<dyn RayIntersect>> = vec![];
+    let objects: Vec<Box<dyn RayIntersect>> = vec![
+        // Central block (Gold / Reflective)
+        Box::new(Cube::new(
+            Vec3::new(-0.5, 0.0, -0.5),
+            Vec3::new(0.5, 1.0, 0.5),
+            gold_mat,
+        )),
+        // Block to the left (Grass)
+        Box::new(Cube::new(
+            Vec3::new(-1.6, 0.0, -0.5),
+            Vec3::new(-0.6, 1.0, 0.5),
+            grass_mat,
+        )),
+        // Block to the right (Wood)
+        Box::new(Cube::new(
+            Vec3::new(0.6, 0.0, -0.5),
+            Vec3::new(1.6, 1.0, 0.5),
+            wood_mat,
+        )),
+        // Floor platform (Stone)
+        Box::new(Cube::new(
+            Vec3::new(-3.0, -1.0, -3.0),
+            Vec3::new(3.0, 0.0, 3.0),
+            stone_mat,
+        )),
+    ];
 
     let light = Light::new(Vec3::new(-6.0, 6.0, 8.0), Color::new(255, 255, 255), 1.5);
 
     let mut camera = Camera::new(
-        Vec3::new(0.0, 0.4, 6.0),
-        Vec3::new(0.0, -0.7, 0.0),
+        Vec3::new(0.0, 2.0, 5.5),
+        Vec3::new(0.0, 0.3, 0.0),
         Vec3::new(0.0, 1.0, 0.0),
     );
 
@@ -193,6 +227,27 @@ fn main() {
         for (key, delta_yaw, delta_pitch) in orbit {
             if window.is_key_down(key) {
                 camera.orbit(delta_yaw, delta_pitch);
+                camera_moved = true;
+            }
+        }
+
+        // Zoom with W / S keys
+        if window.is_key_down(Key::W) {
+            camera.zoom(0.96);
+            camera_moved = true;
+        }
+        if window.is_key_down(Key::S) {
+            camera.zoom(1.04);
+            camera_moved = true;
+        }
+
+        // Zoom with mouse scroll wheel
+        if let Some((_, scroll_y)) = window.get_scroll_wheel() {
+            if scroll_y > 0.0 {
+                camera.zoom(0.92);
+                camera_moved = true;
+            } else if scroll_y < 0.0 {
+                camera.zoom(1.08);
                 camera_moved = true;
             }
         }
