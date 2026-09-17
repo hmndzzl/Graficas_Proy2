@@ -36,20 +36,54 @@ pub fn reflect(incident: &Vec3, normal: &Vec3) -> Vec3 {
     incident - normal * (2.0 * dot(incident, normal))
 }
 
+pub fn refract(incident: &Vec3, normal: &Vec3, eta_t: f32) -> Vec3 {
+    let mut cosi = dot(incident, normal).clamp(-1.0, 1.0);
+    let mut n = *normal;
+    let mut eta_i = 1.0;
+    let mut eta_t_local = eta_t;
+
+    if cosi < 0.0 {
+        cosi = -cosi;
+    } else {
+        std::mem::swap(&mut eta_i, &mut eta_t_local);
+        n = -*normal;
+    }
+
+    let eta = eta_i / eta_t_local;
+    let k = 1.0 - eta * eta * (1.0 - cosi * cosi);
+
+    if k < 0.0 {
+        reflect(incident, &n)
+    } else {
+        eta * incident + (eta * cosi - k.sqrt()) * n
+    }
+}
+
 pub fn cast_shadow(
     intersect: &Intersect,
     light_direction: &Vec3,
     light: &Light,
     objects: &[Box<dyn RayIntersect>],
-) -> bool {
+) -> f32 {
     let shadow_ray_origin = intersect.point + intersect.normal * SHADOW_BIAS;
     let light_distance = (light.position - intersect.point).magnitude();
 
-    objects.iter().any(|object| {
-        object
-            .ray_intersect(&shadow_ray_origin, light_direction)
-            .is_some_and(|blocker| blocker.distance < light_distance)
-    })
+    let mut shadow_intensity = 0.0;
+
+    for object in objects {
+        if let Some(shadow_intersect) = object.ray_intersect(&shadow_ray_origin, light_direction) {
+            if shadow_intersect.distance < light_distance {
+                let transparency = shadow_intersect.material.albedo[3];
+                if transparency > 0.0 {
+                    shadow_intensity += 1.0 - transparency;
+                } else {
+                    return 1.0;
+                }
+            }
+        }
+    }
+
+    shadow_intensity.min(1.0)
 }
 
 pub fn shade(
@@ -58,16 +92,6 @@ pub fn shade(
     light: &Light,
     objects: &[Box<dyn RayIntersect>],
 ) -> Color {
-    let light_direction = (light.position - intersect.point).normalize();
-    let view_direction = (ray_origin - intersect.point).normalize();
-
-    let shadow_intensity = if cast_shadow(intersect, &light_direction, light, objects) {
-        0.0
-    } else {
-        1.0
-    };
-    let light_intensity = light.intensity * shadow_intensity;
-
     let base_color = match &intersect.material.texture {
         Some(texture) => {
             let u = intersect.u * intersect.material.uv_scale.0 + intersect.material.uv_offset.0;
@@ -76,6 +100,16 @@ pub fn shade(
         }
         None => intersect.material.diffuse,
     };
+
+    if intersect.material.has_emission {
+        return base_color * 1.5;
+    }
+
+    let light_direction = (light.position - intersect.point).normalize();
+    let view_direction = (ray_origin - intersect.point).normalize();
+
+    let shadow_intensity = cast_shadow(intersect, &light_direction, light, objects);
+    let light_intensity = light.intensity * (1.0 - shadow_intensity);
 
     let diffuse_intensity = dot(&intersect.normal, &light_direction).max(0.0);
     let diffuse = base_color * (diffuse_intensity * intersect.material.albedo[0] * light_intensity);
@@ -124,23 +158,44 @@ pub fn cast_ray(
     let color = shade(&intersect, ray_origin, light, objects);
 
     let reflectivity = intersect.material.albedo[2];
+    let transparency = intersect.material.albedo[3];
 
-    if reflectivity <= 0.0 {
+    if reflectivity <= 0.0 && transparency <= 0.0 {
         return color;
     }
 
-    let reflect_direction = reflect(ray_direction, &intersect.normal).normalize();
-    let reflect_origin = intersect.point + intersect.normal * REFLECTION_BIAS;
+    let mut final_color = color * (1.0 - reflectivity - transparency).max(0.0);
 
-    let reflected = cast_ray(
-        &reflect_origin,
-        &reflect_direction,
-        objects,
-        light,
-        depth + 1,
-    );
+    if reflectivity > 0.0 {
+        let reflect_direction = reflect(ray_direction, &intersect.normal).normalize();
+        let reflect_origin = intersect.point + intersect.normal * REFLECTION_BIAS;
+        let reflected = cast_ray(
+            &reflect_origin,
+            &reflect_direction,
+            objects,
+            light,
+            depth + 1,
+        );
+        final_color = final_color + reflected * reflectivity;
+    }
 
-    color * (1.0 - reflectivity) + reflected * reflectivity
+    if transparency > 0.0 {
+        let refract_direction = refract(ray_direction, &intersect.normal, intersect.material.refractive_index).normalize();
+        let mut refract_origin = intersect.point - intersect.normal * REFLECTION_BIAS;
+        if dot(ray_direction, &intersect.normal) > 0.0 {
+            refract_origin = intersect.point + intersect.normal * REFLECTION_BIAS;
+        }
+        let refracted = cast_ray(
+            &refract_origin,
+            &refract_direction,
+            objects,
+            light,
+            depth + 1,
+        );
+        final_color = final_color + refracted * transparency;
+    }
+
+    final_color
 }
 
 pub fn render(
@@ -190,31 +245,43 @@ fn main() {
     let texture_atlas = Arc::new(Texture::new("assets/textures.png"));
     let uv_scale = (1.0 / 16.0, 1.0 / 16.0);
 
-    let grass_side = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0])
+    let grass_side = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0, 0.0])
         .with_texture(Arc::clone(&texture_atlas))
         .with_uv(uv_scale, (3.0 / 16.0, 15.0 / 16.0));
-    let grass_top = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0])
+    let grass_top = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0, 0.0])
         .with_texture(Arc::clone(&texture_atlas))
         .with_uv(uv_scale, (0.0, 15.0 / 16.0));
 
     // Stone: (1, 0)
-    let stone_mat = Material::new(Color::new(255, 255, 255), 15.0, [0.8, 0.1, 0.0])
+    let stone_mat = Material::new(Color::new(255, 255, 255), 15.0, [0.8, 0.1, 0.0, 0.0])
         .with_texture(Arc::clone(&texture_atlas))
         .with_uv(uv_scale, (1.0 / 16.0, 15.0 / 16.0));
 
-    // Gold Block: (8, 1)
-    let gold_mat = Material::new(Color::new(255, 255, 255), 80.0, [0.8, 0.5, 0.2])
+    // Gold Block: (7, 1)
+    let gold_mat = Material::new(Color::new(255, 255, 255), 80.0, [0.8, 0.5, 0.2, 0.0])
         .with_texture(Arc::clone(&texture_atlas))
         .with_uv(uv_scale, (7.0 / 16.0, 14.0 / 16.0));
 
     // Wood Log side: (4, 1)
-    let wood_mat = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0])
+    let wood_mat = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0, 0.0])
         .with_texture(Arc::clone(&texture_atlas))
         .with_uv(uv_scale, (4.0 / 16.0, 14.0 / 16.0));
     // Wood Log top: (5, 1)
-    let wood_top = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0])
+    let wood_top = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0, 0.0])
         .with_texture(Arc::clone(&texture_atlas))
         .with_uv(uv_scale, (5.0 / 16.0, 14.0 / 16.0));
+
+    // Lava (Emissive)
+    let lava_mat = Material::new(Color::new(255, 120, 0), 0.0, [1.0, 0.0, 0.0, 0.0])
+        .with_emission(true);
+
+    // Glass (Transparent/Refractive)
+    let glass_mat = Material::new(Color::new(200, 220, 255), 50.0, [0.1, 0.4, 0.1, 0.8])
+        .with_refractive_index(1.5);
+    
+    // Water (Transparent/Refractive)
+    let water_mat = Material::new(Color::new(50, 100, 255), 40.0, [0.2, 0.3, 0.1, 0.6])
+        .with_refractive_index(1.33);
 
     let objects: Vec<Box<dyn RayIntersect>> = vec![
         // Central block (Gold / Reflective)
@@ -241,10 +308,28 @@ fn main() {
             )
             .with_top_material(wood_top),
         ),
+        // Lava block (Emissive)
+        Box::new(Cube::new(
+            Vec3::new(1.7, 0.0, -0.5),
+            Vec3::new(2.7, 1.0, 0.5),
+            lava_mat,
+        )),
+        // Glass block (Refractive)
+        Box::new(Cube::new(
+            Vec3::new(-0.5, 1.0, -0.5),
+            Vec3::new(0.5, 2.0, 0.5),
+            glass_mat,
+        )),
+        // Water block
+        Box::new(Cube::new(
+            Vec3::new(-2.7, 0.0, -0.5),
+            Vec3::new(-1.7, 1.0, 0.5),
+            water_mat,
+        )),
         // Floor platform (Stone)
         Box::new(Cube::new(
-            Vec3::new(-3.0, -1.0, -3.0),
-            Vec3::new(3.0, 0.0, 3.0),
+            Vec3::new(-4.0, -1.0, -4.0),
+            Vec3::new(4.0, 0.0, 4.0),
             stone_mat,
         )),
     ];
