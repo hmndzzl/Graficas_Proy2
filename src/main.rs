@@ -4,18 +4,20 @@ mod cube;
 mod framebuffer;
 mod light;
 mod ray_intersect;
+mod texture;
 
+use camera::Camera;
+use color::Color;
+use cube::Cube;
+use framebuffer::Framebuffer;
+use light::Light;
 use minifb::{Key, Window, WindowOptions};
-use nalgebra_glm::{dot, normalize, Vec3};
+use nalgebra_glm::{Vec3, dot, normalize};
+use ray_intersect::{Intersect, Material, RayIntersect};
 use std::f32::consts::PI;
+use std::sync::Arc;
 use std::time::Duration;
-
-use crate::camera::Camera;
-use crate::color::Color;
-use crate::cube::Cube;
-use crate::framebuffer::Framebuffer;
-use crate::light::Light;
-use crate::ray_intersect::{Intersect, Material, RayIntersect};
+use texture::Texture;
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
@@ -66,9 +68,17 @@ pub fn shade(
     };
     let light_intensity = light.intensity * shadow_intensity;
 
+    let base_color = match &intersect.material.texture {
+        Some(texture) => {
+            let u = intersect.u * intersect.material.uv_scale.0 + intersect.material.uv_offset.0;
+            let v = intersect.v * intersect.material.uv_scale.1 + intersect.material.uv_offset.1;
+            texture.get_color(u, v)
+        }
+        None => intersect.material.diffuse,
+    };
+
     let diffuse_intensity = dot(&intersect.normal, &light_direction).max(0.0);
-    let diffuse = intersect.material.diffuse
-        * (diffuse_intensity * intersect.material.albedo[0] * light_intensity);
+    let diffuse = base_color * (diffuse_intensity * intersect.material.albedo[0] * light_intensity);
 
     let reflect_direction = reflect(&-light_direction, &intersect.normal);
     let specular_intensity = dot(&view_direction, &reflect_direction)
@@ -78,7 +88,7 @@ pub fn shade(
     let specular =
         light.color * (specular_intensity * intersect.material.albedo[1] * light_intensity);
 
-    let ambient = intersect.material.diffuse * 0.15;
+    let ambient = base_color * 0.15;
 
     diffuse + specular + ambient
 }
@@ -98,7 +108,10 @@ pub fn cast_ray(
 
     for object in objects {
         if let Some(intersect) = object.ray_intersect(ray_origin, ray_direction) {
-            if closest.is_none_or(|current| intersect.distance < current.distance) {
+            if closest
+                .as_ref()
+                .is_none_or(|current| intersect.distance < current.distance)
+            {
                 closest = Some(intersect);
             }
         }
@@ -174,10 +187,34 @@ fn main() {
     )
     .unwrap();
 
-    let grass_mat = Material::new(Color::new(86, 155, 60), 10.0, [0.8, 0.1, 0.0]);
-    let stone_mat = Material::new(Color::new(125, 125, 125), 15.0, [0.8, 0.1, 0.0]);
-    let gold_mat = Material::new(Color::new(255, 215, 0), 80.0, [0.2, 0.5, 0.6]);
-    let wood_mat = Material::new(Color::new(160, 110, 60), 10.0, [0.8, 0.1, 0.0]);
+    let texture_atlas = Arc::new(Texture::new("assets/textures.png"));
+    let uv_scale = (1.0 / 16.0, 1.0 / 16.0);
+
+    let grass_side = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0])
+        .with_texture(Arc::clone(&texture_atlas))
+        .with_uv(uv_scale, (3.0 / 16.0, 15.0 / 16.0));
+    let grass_top = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0])
+        .with_texture(Arc::clone(&texture_atlas))
+        .with_uv(uv_scale, (0.0, 15.0 / 16.0));
+
+    // Stone: (1, 0)
+    let stone_mat = Material::new(Color::new(255, 255, 255), 15.0, [0.8, 0.1, 0.0])
+        .with_texture(Arc::clone(&texture_atlas))
+        .with_uv(uv_scale, (1.0 / 16.0, 15.0 / 16.0));
+
+    // Gold Block: (8, 1)
+    let gold_mat = Material::new(Color::new(255, 255, 255), 80.0, [0.8, 0.5, 0.2])
+        .with_texture(Arc::clone(&texture_atlas))
+        .with_uv(uv_scale, (7.0 / 16.0, 14.0 / 16.0));
+
+    // Wood Log side: (4, 1)
+    let wood_mat = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0])
+        .with_texture(Arc::clone(&texture_atlas))
+        .with_uv(uv_scale, (4.0 / 16.0, 14.0 / 16.0));
+    // Wood Log top: (5, 1)
+    let wood_top = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0])
+        .with_texture(Arc::clone(&texture_atlas))
+        .with_uv(uv_scale, (5.0 / 16.0, 14.0 / 16.0));
 
     let objects: Vec<Box<dyn RayIntersect>> = vec![
         // Central block (Gold / Reflective)
@@ -187,17 +224,23 @@ fn main() {
             gold_mat,
         )),
         // Block to the left (Grass)
-        Box::new(Cube::new(
-            Vec3::new(-1.6, 0.0, -0.5),
-            Vec3::new(-0.6, 1.0, 0.5),
-            grass_mat,
-        )),
+        Box::new(
+            Cube::new(
+                Vec3::new(-1.6, 0.0, -0.5),
+                Vec3::new(-0.6, 1.0, 0.5),
+                grass_side,
+            )
+            .with_top_material(grass_top),
+        ),
         // Block to the right (Wood)
-        Box::new(Cube::new(
-            Vec3::new(0.6, 0.0, -0.5),
-            Vec3::new(1.6, 1.0, 0.5),
-            wood_mat,
-        )),
+        Box::new(
+            Cube::new(
+                Vec3::new(0.6, 0.0, -0.5),
+                Vec3::new(1.6, 1.0, 0.5),
+                wood_mat,
+            )
+            .with_top_material(wood_top),
+        ),
         // Floor platform (Stone)
         Box::new(Cube::new(
             Vec3::new(-3.0, -1.0, -3.0),
