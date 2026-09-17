@@ -318,6 +318,8 @@ pub fn build_diorama(texture_atlas: Arc<Texture>) -> Vec<Box<dyn RayIntersect>> 
         .with_uv(uv_scale, (13.0 / 16.0, 13.0 / 16.0)); // (13, 2)
 
     let lava_mat = Material::new(Color::new(255, 120, 0), 0.0, [1.0, 0.0, 0.0, 0.0])
+        .with_texture(Arc::clone(&texture_atlas))
+        .with_uv(uv_scale, (15.0 / 16.0, 0.0)) // (15, 15)
         .with_emission(true);
     let glass_mat = Material::new(Color::new(200, 220, 255), 50.0, [0.1, 0.4, 0.1, 0.8])
         .with_refractive_index(1.5);
