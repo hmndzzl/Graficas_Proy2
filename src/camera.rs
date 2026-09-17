@@ -44,4 +44,12 @@ impl Camera {
                 radius * new_yaw.sin() * new_pitch.cos(),
             );
     }
+
+    pub fn zoom(&mut self, factor: f32) {
+        let radius_vector = self.eye - self.center;
+        let current_radius = radius_vector.magnitude();
+        let new_radius = (current_radius * factor).clamp(1.5, 30.0);
+        let direction = radius_vector.normalize();
+        self.eye = self.center + direction * new_radius;
+    }
 }
