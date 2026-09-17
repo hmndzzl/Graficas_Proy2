@@ -36,6 +36,28 @@ pub fn reflect(incident: &Vec3, normal: &Vec3) -> Vec3 {
     incident - normal * (2.0 * dot(incident, normal))
 }
 
+pub fn get_sky_color(ray_direction: &Vec3, time_of_day: f32) -> Color {
+    let day_zenith = Color::new(80, 150, 255);
+    let day_horizon = Color::new(180, 220, 255);
+    
+    let night_zenith = Color::new(10, 10, 30);
+    let night_horizon = Color::new(40, 40, 80);
+    
+    let sunset_horizon = Color::new(255, 120, 50);
+
+    let t_y = ray_direction.y.max(0.0);
+    let sun_height = (time_of_day * std::f32::consts::PI * 2.0 - std::f32::consts::PI / 2.0).sin();
+    
+    let day_factor = ((sun_height + 0.2) * 2.0).clamp(0.0, 1.0);
+    let sunset_factor = (1.0 - sun_height.abs() * 3.0).clamp(0.0, 1.0);
+    
+    let current_zenith = night_zenith * (1.0 - day_factor) + day_zenith * day_factor;
+    let base_horizon = night_horizon * (1.0 - day_factor) + day_horizon * day_factor;
+    let current_horizon = base_horizon * (1.0 - sunset_factor) + sunset_horizon * sunset_factor;
+    
+    current_horizon * (1.0 - t_y) + current_zenith * t_y
+}
+
 pub fn refract(incident: &Vec3, normal: &Vec3, eta_t: f32) -> Vec3 {
     let mut cosi = dot(incident, normal).clamp(-1.0, 1.0);
     let mut n = *normal;
@@ -133,9 +155,10 @@ pub fn cast_ray(
     objects: &[Box<dyn RayIntersect>],
     light: &Light,
     depth: u32,
+    time_of_day: f32,
 ) -> Color {
     if depth > MAX_DEPTH {
-        return Color::from_hex(BACKGROUND_COLOR);
+        return get_sky_color(ray_direction, time_of_day);
     }
 
     let mut closest: Option<Intersect> = None;
@@ -152,7 +175,7 @@ pub fn cast_ray(
     }
 
     let Some(intersect) = closest else {
-        return Color::from_hex(BACKGROUND_COLOR);
+        return get_sky_color(ray_direction, time_of_day);
     };
 
     let color = shade(&intersect, ray_origin, light, objects);
@@ -175,6 +198,7 @@ pub fn cast_ray(
             objects,
             light,
             depth + 1,
+            time_of_day,
         );
         final_color = final_color + reflected * reflectivity;
     }
@@ -191,6 +215,7 @@ pub fn cast_ray(
             objects,
             light,
             depth + 1,
+            time_of_day,
         );
         final_color = final_color + refracted * transparency;
     }
@@ -203,6 +228,7 @@ pub fn render(
     objects: &[Box<dyn RayIntersect>],
     camera: &Camera,
     light: &Light,
+    time_of_day: f32,
 ) {
     let width = framebuffer.width as f32;
     let height = framebuffer.height as f32;
@@ -221,9 +247,8 @@ pub fn render(
             let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
             let ray_direction = camera.basis_change(&ray_direction);
 
-            framebuffer.set_current_color(
-                cast_ray(&camera.eye, &ray_direction, objects, light, 0).to_hex(),
-            );
+            let color = cast_ray(&camera.eye, &ray_direction, objects, light, 0, time_of_day);
+            framebuffer.set_current_color(color.to_hex());
             framebuffer.point(x, y);
         }
     }
@@ -334,7 +359,7 @@ fn main() {
         )),
     ];
 
-    let light = Light::new(Vec3::new(-6.0, 6.0, 8.0), Color::new(255, 255, 255), 1.5);
+    let mut time_of_day = 0.5; // Noon
 
     let mut camera = Camera::new(
         Vec3::new(0.0, 2.0, 5.5),
@@ -345,6 +370,19 @@ fn main() {
     let mut camera_moved = true;
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        if window.is_key_pressed(Key::D, minifb::KeyRepeat::No) {
+            time_of_day = 0.5; // Day
+            camera_moved = true;
+        }
+        if window.is_key_pressed(Key::N, minifb::KeyRepeat::No) {
+            time_of_day = 0.0; // Night
+            camera_moved = true;
+        }
+        if window.is_key_down(Key::T) {
+            time_of_day += 0.01;
+            if time_of_day >= 1.0 { time_of_day -= 1.0; }
+            camera_moved = true;
+        }
         let orbit = [
             (Key::Left, ROTATION_SPEED, 0.0),
             (Key::Right, -ROTATION_SPEED, 0.0),
@@ -381,7 +419,32 @@ fn main() {
         }
 
         if camera_moved {
-            render(&mut framebuffer, &objects, &camera, &light);
+            let angle = time_of_day * std::f32::consts::PI * 2.0 - std::f32::consts::PI / 2.0;
+            let sun_y = angle.sin() * 10.0;
+            let sun_x = angle.cos() * 10.0;
+            
+            let is_day = sun_y > 0.0;
+            let intensity = if is_day {
+                1.5 * (sun_y / 10.0).clamp(0.2, 1.0)
+            } else {
+                0.3 // Moonlight
+            };
+
+            let light_color = if is_day {
+                Color::new(255, 255, 255)
+            } else {
+                Color::new(100, 100, 255)
+            };
+
+            let light_pos = if is_day {
+                Vec3::new(sun_x, sun_y, 8.0)
+            } else {
+                Vec3::new(-sun_x, -sun_y, -8.0)
+            };
+
+            let current_light = Light::new(light_pos, light_color, intensity);
+
+            render(&mut framebuffer, &objects, &camera, &current_light, time_of_day);
             camera_moved = false;
         }
 
