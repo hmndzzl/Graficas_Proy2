@@ -1,0 +1,11 @@
+[package]
+name = "Graficas_Proy2"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nalgebra-glm = "0.18.0"
+minifb = "0.26.0"
+
+[profile.dev]
+opt-level = 3
