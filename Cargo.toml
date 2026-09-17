@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 nalgebra-glm = "0.18.0"
 minifb = "0.26.0"
+image = "0.24"
 
 [profile.dev]
 opt-level = 3
