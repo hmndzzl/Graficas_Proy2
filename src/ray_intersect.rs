@@ -13,6 +13,7 @@ pub struct Material {
     pub texture: Option<Arc<Texture>>,
     pub uv_scale: (f32, f32),
     pub uv_offset: (f32, f32),
+    pub uv_rotated: bool,
 }
 
 impl Material {
@@ -26,6 +27,7 @@ impl Material {
             texture: None,
             uv_scale: (1.0, 1.0),
             uv_offset: (0.0, 0.0),
+            uv_rotated: false,
         }
     }
 
@@ -47,6 +49,11 @@ impl Material {
     pub fn with_uv(mut self, scale: (f32, f32), offset: (f32, f32)) -> Self {
         self.uv_scale = scale;
         self.uv_offset = offset;
+        self
+    }
+
+    pub fn with_uv_rotated(mut self, rotated: bool) -> Self {
+        self.uv_rotated = rotated;
         self
     }
 }
