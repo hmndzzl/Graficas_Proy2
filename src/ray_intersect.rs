@@ -61,6 +61,6 @@ pub struct Intersect {
     pub v: f32,
 }
 
-pub trait RayIntersect {
+pub trait RayIntersect: Sync + Send {
     fn ray_intersect(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Option<Intersect>;
 }

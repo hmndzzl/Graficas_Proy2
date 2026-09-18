@@ -18,6 +18,7 @@ use std::f32::consts::PI;
 use std::sync::Arc;
 use std::time::Duration;
 use texture::Texture;
+use rayon::prelude::*;
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
@@ -231,16 +232,25 @@ pub fn render(
     time_of_day: f32,
     block_size: usize,
 ) {
-    let width = framebuffer.width as f32;
-    let height = framebuffer.height as f32;
-    let aspect_ratio = width / height;
-
+    let width = framebuffer.width;
+    let height = framebuffer.height;
+    let aspect_ratio = width as f32 / height as f32;
     let perspective_scale = (FOV / 2.0).tan();
 
-    for y in (0..framebuffer.height).step_by(block_size) {
-        for x in (0..framebuffer.width).step_by(block_size) {
-            let screen_x = (2.0 * x as f32) / width - 1.0;
-            let screen_y = -(2.0 * y as f32) / height + 1.0;
+    let width_blocks = (width + block_size - 1) / block_size;
+    let height_blocks = (height + block_size - 1) / block_size;
+
+    let block_colors: Vec<u32> = (0..width_blocks * height_blocks)
+        .into_par_iter()
+        .map(|i| {
+            let bx = i % width_blocks;
+            let by = i / width_blocks;
+
+            let x = bx * block_size;
+            let y = by * block_size;
+
+            let screen_x = (2.0 * x as f32) / (width as f32) - 1.0;
+            let screen_y = -(2.0 * y as f32) / (height as f32) + 1.0;
 
             let screen_x = screen_x * aspect_ratio * perspective_scale;
             let screen_y = screen_y * perspective_scale;
@@ -248,16 +258,19 @@ pub fn render(
             let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
             let ray_direction = camera.basis_change(&ray_direction);
 
-            let color = cast_ray(&camera.eye, &ray_direction, objects, light, 0, time_of_day);
-            let hex_color = color.to_hex();
+            cast_ray(&camera.eye, &ray_direction, objects, light, 0, time_of_day).to_hex()
+        })
+        .collect();
+
+    for y in 0..height {
+        for x in 0..width {
+            let bx = x / block_size;
+            let by = y / block_size;
+            let i = by * width_blocks + bx;
             
-            for by in 0..block_size {
-                for bx in 0..block_size {
-                    if x + bx < framebuffer.width && y + by < framebuffer.height {
-                        framebuffer.set_current_color(hex_color);
-                        framebuffer.point(x + bx, y + by);
-                    }
-                }
+            let idx = y * width + x;
+            if idx < framebuffer.buffer.len() {
+                framebuffer.buffer[idx] = block_colors[i];
             }
         }
     }
