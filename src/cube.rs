@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::ray_intersect::{Intersect, Material, RayIntersect};
 use nalgebra_glm::Vec3;
 

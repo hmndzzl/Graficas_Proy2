@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 pub struct Framebuffer {
     pub width: usize,
     pub height: usize,
