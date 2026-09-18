@@ -117,8 +117,17 @@ pub fn shade(
 ) -> Color {
     let base_color = match &intersect.material.texture {
         Some(texture) => {
-            let u = intersect.u * intersect.material.uv_scale.0 + intersect.material.uv_offset.0;
-            let v = intersect.v * intersect.material.uv_scale.1 + intersect.material.uv_offset.1;
+            let mut u = intersect.u;
+            let mut v = intersect.v;
+            
+            if intersect.material.uv_rotated {
+                let temp = u;
+                u = v;
+                v = 1.0 - temp;
+            }
+
+            let u = u * intersect.material.uv_scale.0 + intersect.material.uv_offset.0;
+            let v = v * intersect.material.uv_scale.1 + intersect.material.uv_offset.1;
             texture.get_color(u, v)
         }
         None => intersect.material.diffuse,
@@ -161,20 +170,23 @@ pub fn cast_ray(
     lights: &[Light],
     depth: u32,
     time_of_day: f32,
+    selected_index: Option<usize>,
 ) -> Color {
     if depth > MAX_DEPTH {
         return get_sky_color(ray_direction, time_of_day);
     }
 
     let mut closest: Option<Intersect> = None;
+    let mut closest_i: Option<usize> = None;
 
-    for object in objects {
+    for (i, object) in objects.iter().enumerate() {
         if let Some(intersect) = object.ray_intersect(ray_origin, ray_direction) {
             if closest
                 .as_ref()
                 .is_none_or(|current| intersect.distance < current.distance)
             {
                 closest = Some(intersect);
+                closest_i = Some(i);
             }
         }
     }
@@ -183,7 +195,11 @@ pub fn cast_ray(
         return get_sky_color(ray_direction, time_of_day);
     };
 
-    let color = shade(&intersect, ray_origin, lights, objects);
+    let mut color = shade(&intersect, ray_origin, lights, objects);
+
+    if selected_index.is_some() && closest_i == selected_index {
+        color = color + Color::new(80, 80, 80);
+    }
 
     let reflectivity = intersect.material.albedo[2];
     let transparency = intersect.material.albedo[3];
@@ -204,6 +220,7 @@ pub fn cast_ray(
             lights,
             depth + 1,
             time_of_day,
+            None,
         );
         final_color = final_color + reflected * reflectivity;
     }
@@ -221,6 +238,7 @@ pub fn cast_ray(
             lights,
             depth + 1,
             time_of_day,
+            None,
         );
         final_color = final_color + refracted * transparency;
     }
@@ -235,6 +253,7 @@ pub fn render(
     lights: &[Light],
     time_of_day: f32,
     block_size: usize,
+    selected_index: Option<usize>,
 ) {
     let width = framebuffer.width;
     let height = framebuffer.height;
@@ -262,7 +281,7 @@ pub fn render(
             let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
             let ray_direction = camera.basis_change(&ray_direction);
 
-            cast_ray(&camera.eye, &ray_direction, objects, lights, 0, time_of_day).to_hex()
+            cast_ray(&camera.eye, &ray_direction, objects, lights, 0, time_of_day, selected_index).to_hex()
         })
         .collect();
 
@@ -280,6 +299,56 @@ pub fn render(
     }
 }
 
+pub fn draw_ui(framebuffer: &mut Framebuffer, inventory: &[(&str, Material)], active_index: usize) {
+    let width = framebuffer.width;
+    let height = framebuffer.height;
+    
+    // Crosshair
+    let cx = width / 2;
+    let cy = height / 2;
+    let crosshair_color = 0xFFFFFF;
+    for i in 0..8 {
+        if cx + i < width { framebuffer.buffer[cy * width + (cx + i)] = crosshair_color; }
+        if cx >= i { framebuffer.buffer[cy * width + (cx - i)] = crosshair_color; }
+        if cy + i < height { framebuffer.buffer[(cy + i) * width + cx] = crosshair_color; }
+        if cy >= i { framebuffer.buffer[(cy - i) * width + cx] = crosshair_color; }
+    }
+    
+    // Hotbar (very basic)
+    let box_size = 40;
+    let padding = 10;
+    let total_width = inventory.len() * box_size + (inventory.len() - 1) * padding;
+    let start_x = (width - total_width) / 2;
+    let start_y = height - box_size - 20;
+
+    for (i, (_, mat)) in inventory.iter().enumerate() {
+        let x0 = start_x + i * (box_size + padding);
+        let y0 = start_y;
+        
+        let color = if i == active_index {
+            0xFFFFFF // Highlight active
+        } else {
+            0x555555 // Inactive
+        };
+
+        // Draw border
+        for bx in 0..box_size {
+            for by in 0..box_size {
+                if bx < 2 || by < 2 || bx >= box_size - 2 || by >= box_size - 2 {
+                    if y0 + by < height && x0 + bx < width {
+                        framebuffer.buffer[(y0 + by) * width + (x0 + bx)] = color;
+                    }
+                } else {
+                    // Fill with material color
+                    if y0 + by < height && x0 + bx < width {
+                        let inner_color = mat.diffuse.to_hex();
+                        framebuffer.buffer[(y0 + by) * width + (x0 + bx)] = inner_color;
+                    }
+                }
+            }
+        }
+    }
+}
 
 pub fn build_diorama(texture_atlas: Arc<Texture>) -> Vec<Box<dyn RayIntersect>> {
     let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
@@ -343,12 +412,26 @@ pub fn build_diorama(texture_atlas: Arc<Texture>) -> Vec<Box<dyn RayIntersect>> 
     let water_mat = Material::new(Color::new(50, 100, 255), 40.0, [0.2, 0.3, 0.1, 0.6])
         .with_refractive_index(1.33);
 
-    let wool_white = Material::new(Color::new(255, 255, 255), 5.0, [0.8, 0.0, 0.0, 0.0])
+    let bed_foot_top = Material::new(Color::new(255, 255, 255), 5.0, [0.8, 0.0, 0.0, 0.0])
         .with_texture(Arc::clone(&texture_atlas))
-        .with_uv(uv_scale, (0.0, 11.0 / 16.0)); // (0, 4)
-    let wool_red = Material::new(Color::new(255, 255, 255), 5.0, [0.8, 0.0, 0.0, 0.0])
+        .with_uv(uv_scale, (6.0 / 16.0, 7.0 / 16.0)) // (6, 8)
+        .with_uv_rotated(true);
+    let bed_head_top = Material::new(Color::new(255, 255, 255), 5.0, [0.8, 0.0, 0.0, 0.0])
         .with_texture(Arc::clone(&texture_atlas))
-        .with_uv(uv_scale, (1.0 / 16.0, 11.0 / 16.0)); // (1, 4)
+        .with_uv(uv_scale, (7.0 / 16.0, 7.0 / 16.0)) // (7, 8)
+        .with_uv_rotated(true);
+    let bed_foot_front = Material::new(Color::new(255, 255, 255), 5.0, [0.8, 0.0, 0.0, 0.0])
+        .with_texture(Arc::clone(&texture_atlas))
+        .with_uv(uv_scale, (5.0 / 16.0, 6.0 / 16.0)); // (5, 9)
+    let bed_head_back = Material::new(Color::new(255, 255, 255), 5.0, [0.8, 0.0, 0.0, 0.0])
+        .with_texture(Arc::clone(&texture_atlas))
+        .with_uv(uv_scale, (8.0 / 16.0, 6.0 / 16.0)); // (8, 9)
+    let bed_foot_side = Material::new(Color::new(255, 255, 255), 5.0, [0.8, 0.0, 0.0, 0.0])
+        .with_texture(Arc::clone(&texture_atlas))
+        .with_uv(uv_scale, (6.0 / 16.0, 6.0 / 16.0)); // (6, 9)
+    let bed_head_side = Material::new(Color::new(255, 255, 255), 5.0, [0.8, 0.0, 0.0, 0.0])
+        .with_texture(Arc::clone(&texture_atlas))
+        .with_uv(uv_scale, (7.0 / 16.0, 6.0 / 16.0)); // (7, 9)
 
     // Island
     let radius = 6.0;
@@ -500,15 +583,26 @@ pub fn build_diorama(texture_atlas: Arc<Texture>) -> Vec<Box<dyn RayIntersect>> 
 
     // Bed (Pillow at -4, mattress at -3)
     objects.push(Box::new(Cube::new(
-        Vec3::new(0.0 - 0.5, 1.0 - 0.5, -4.0 - 0.5),
+        Vec3::new(0.0 - 0.5, 1.0 - 0.5, -4.0 - 0.5), // Headboard side (-4 in Z)
         Vec3::new(0.0 + 0.5, 1.0 - 0.1, -4.0 + 0.5),
-        wool_white.clone(),
-    )));
+        planks_mat.clone(),
+    )
+    .with_top_material(bed_head_top.clone())
+    .with_back_material(bed_head_back.clone()) // Back is -Z
+    .with_left_material(bed_head_side.clone())
+    .with_right_material(bed_head_side.clone())
+    .with_front_material(bed_head_side.clone()))); // Connects to foot
+
     objects.push(Box::new(Cube::new(
-        Vec3::new(0.0 - 0.5, 1.0 - 0.5, -3.0 - 0.5),
+        Vec3::new(0.0 - 0.5, 1.0 - 0.5, -3.0 - 0.5), // Foot side (-3 in Z)
         Vec3::new(0.0 + 0.5, 1.0 - 0.1, -3.0 + 0.5),
-        wool_red.clone(),
-    )));
+        planks_mat.clone(),
+    )
+    .with_top_material(bed_foot_top.clone())
+    .with_front_material(bed_foot_front.clone()) // Front is +Z
+    .with_left_material(bed_foot_side.clone())
+    .with_right_material(bed_foot_side.clone())
+    .with_back_material(bed_foot_side.clone()))); // Connects to head
 
     // Gold decorations outside the cabin
     objects.push(Box::new(Cube::new(
@@ -540,7 +634,33 @@ fn main() {
 
     let texture_atlas = Arc::new(Texture::new("assets/textures.png"));
 
-    let objects = build_diorama(texture_atlas);
+    let mut objects = build_diorama(Arc::clone(&texture_atlas));
+
+    // Inventory definition
+    let uv_scale = (1.0 / 16.0, 1.0 / 16.0);
+    let dirt_mat = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0, 0.0])
+        .with_texture(Arc::clone(&texture_atlas))
+        .with_uv(uv_scale, (2.0 / 16.0, 15.0 / 16.0));
+    let planks_mat = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0, 0.0])
+        .with_texture(Arc::clone(&texture_atlas))
+        .with_uv(uv_scale, (4.0 / 16.0, 15.0 / 16.0));
+    let stone_mat = Material::new(Color::new(255, 255, 255), 15.0, [0.8, 0.1, 0.0, 0.0])
+        .with_texture(Arc::clone(&texture_atlas))
+        .with_uv(uv_scale, (1.0 / 16.0, 15.0 / 16.0));
+    let glass_mat = Material::new(Color::new(200, 220, 255), 50.0, [0.1, 0.4, 0.1, 0.8])
+        .with_refractive_index(1.5);
+    let leaves_mat = Material::new(Color::new(255, 255, 255), 5.0, [0.8, 0.1, 0.0, 0.0])
+        .with_texture(Arc::clone(&texture_atlas))
+        .with_uv(uv_scale, (4.0 / 16.0, 12.0 / 16.0));
+
+    let inventory = vec![
+        ("Tierra", dirt_mat),
+        ("Tablas", planks_mat),
+        ("Piedra", stone_mat),
+        ("Hojas", leaves_mat),
+        ("Cristal", glass_mat),
+    ];
+    let mut active_block_index = 0;
 
     let mut time_of_day = 0.5; // Noon
 
@@ -567,6 +687,50 @@ fn main() {
             time_of_day += 0.01;
             if time_of_day >= 1.0 { time_of_day -= 1.0; }
             moved = true;
+        }
+
+        if window.is_key_pressed(Key::Key1, minifb::KeyRepeat::No) { active_block_index = 0; moved = true; }
+        if window.is_key_pressed(Key::Key2, minifb::KeyRepeat::No) { active_block_index = 1; moved = true; }
+        if window.is_key_pressed(Key::Key3, minifb::KeyRepeat::No) { active_block_index = 2; moved = true; }
+        if window.is_key_pressed(Key::Key4, minifb::KeyRepeat::No) { active_block_index = 3; moved = true; }
+        if window.is_key_pressed(Key::Key5, minifb::KeyRepeat::No) { active_block_index = 4; moved = true; }
+
+        // Block Selection Raycasting
+        let center_ray = normalize(&Vec3::new(0.0, 0.0, -1.0));
+        let center_ray = camera.basis_change(&center_ray);
+        let mut selected_block: Option<(usize, Intersect)> = None;
+        for (i, object) in objects.iter().enumerate() {
+            if let Some(intersect) = object.ray_intersect(&camera.eye, &center_ray) {
+                if intersect.distance < 10.0 {
+                    if selected_block.as_ref().is_none_or(|(_, current)| intersect.distance < current.distance) {
+                        selected_block = Some((i, intersect));
+                    }
+                }
+            }
+        }
+
+        if window.is_key_pressed(Key::Space, minifb::KeyRepeat::No) {
+            if let Some((_, intersect)) = &selected_block {
+                let hit_center_x = (intersect.point.x - intersect.normal.x * 0.01).round();
+                let hit_center_y = (intersect.point.y - intersect.normal.y * 0.01).round();
+                let hit_center_z = (intersect.point.z - intersect.normal.z * 0.01).round();
+                let new_center = Vec3::new(hit_center_x, hit_center_y, hit_center_z) + intersect.normal;
+                
+                let active_mat = inventory[active_block_index].1.clone();
+                objects.push(Box::new(Cube::new(
+                    new_center - Vec3::new(0.5, 0.5, 0.5),
+                    new_center + Vec3::new(0.5, 0.5, 0.5),
+                    active_mat,
+                )));
+                moved = true;
+            }
+        }
+
+        if window.is_key_pressed(Key::X, minifb::KeyRepeat::No) {
+            if let Some((idx, _)) = selected_block {
+                objects.remove(idx);
+                moved = true;
+            }
         }
         let orbit = [
             (Key::Left, ROTATION_SPEED, 0.0),
@@ -636,7 +800,11 @@ fn main() {
             let current_light = Light::new(light_pos, light_color, intensity);
             let lava_light = Light::new(Vec3::new(2.0, -3.0, 2.0), Color::new(255, 120, 0), 2.0);
 
-            render(&mut framebuffer, &objects, &camera, &[current_light, lava_light], time_of_day, block_size);
+            let selected_index = selected_block.as_ref().map(|(i, _)| *i);
+
+            render(&mut framebuffer, &objects, &camera, &[current_light, lava_light], time_of_day, block_size, selected_index);
+            
+            draw_ui(&mut framebuffer, &inventory, active_block_index);
             
             // Only advance to high-res if no keys are pressed (we stop moving)
             if !moved {
