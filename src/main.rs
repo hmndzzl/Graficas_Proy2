@@ -41,8 +41,8 @@ pub fn get_sky_color(ray_direction: &Vec3, time_of_day: f32) -> Color {
     let day_zenith = Color::new(80, 150, 255);
     let day_horizon = Color::new(180, 220, 255);
     
-    let night_zenith = Color::new(10, 10, 30);
-    let night_horizon = Color::new(40, 40, 80);
+    let night_zenith = Color::new(2, 2, 10);
+    let night_horizon = Color::new(10, 15, 30);
     
     let sunset_horizon = Color::new(255, 120, 50);
 
@@ -56,7 +56,25 @@ pub fn get_sky_color(ray_direction: &Vec3, time_of_day: f32) -> Color {
     let base_horizon = night_horizon * (1.0 - day_factor) + day_horizon * day_factor;
     let current_horizon = base_horizon * (1.0 - sunset_factor) + sunset_horizon * sunset_factor;
     
-    current_horizon * (1.0 - t_y) + current_zenith * t_y
+    let mut sky = current_horizon * (1.0 - t_y) + current_zenith * t_y;
+
+    // Stars
+    if day_factor < 0.2 {
+        let qx = (ray_direction.x * 500.0).round();
+        let qy = (ray_direction.y * 500.0).round();
+        let qz = (ray_direction.z * 500.0).round();
+        
+        let seed = qx * 12.9898 + qy * 78.233 + qz * 37.719;
+        let hash = (seed.sin() * 43758.5453).fract().abs();
+        
+        if hash > 0.995 {
+            let star_brightness = (hash - 0.995) * 200.0;
+            let visibility = (1.0 - day_factor * 5.0).clamp(0.0, 1.0);
+            sky = sky + Color::new(255, 255, 255) * (star_brightness * visibility);
+        }
+    }
+
+    sky
 }
 
 pub fn refract(incident: &Vec3, normal: &Vec3, eta_t: f32) -> Vec3 {
