@@ -22,7 +22,7 @@ use rayon::prelude::*;
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
-const BACKGROUND_COLOR: u32 = 0x87CEEB;
+
 
 const FOV: f32 = PI / 3.0;
 
@@ -252,9 +252,17 @@ pub fn cast_ray(
         }
     }
 
-    let Some(intersect) = closest else {
+    if closest.is_none() {
         return get_sky_color(ray_direction, time_of_day);
-    };
+    }
+    let mut intersect = closest.unwrap();
+
+    // Water Waves (Procedural Normal Perturbation)
+    if intersect.material.is_water {
+        let nx = noise(intersect.point.x * 3.0 + time_of_day * 10.0, intersect.point.z * 3.0);
+        let nz = noise(intersect.point.x * 3.0, intersect.point.z * 3.0 - time_of_day * 10.0);
+        intersect.normal = (intersect.normal + Vec3::new(nx - 0.5, 0.0, nz - 0.5) * 0.3).normalize();
+    }
 
     let mut color = shade(&intersect, ray_origin, lights, objects);
 
@@ -302,6 +310,18 @@ pub fn cast_ray(
             None,
         );
         final_color = final_color + refracted * transparency;
+    }
+
+    // Atmospheric Depth Fog (Only apply to primary rays to avoid double-fogging transparent/reflective objects)
+    if depth == 0 {
+        let fog_start = 40.0;
+        let fog_end = 100.0;
+        let fog_factor = ((intersect.distance - fog_start) / (fog_end - fog_start)).clamp(0.0, 1.0);
+        
+        if fog_factor > 0.0 {
+            let sky_color = get_sky_color(ray_direction, time_of_day);
+            final_color = final_color * (1.0 - fog_factor) + sky_color * fog_factor;
+        }
     }
 
     final_color

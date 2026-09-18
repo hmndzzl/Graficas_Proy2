@@ -14,6 +14,7 @@ pub struct Material {
     pub uv_scale: (f32, f32),
     pub uv_offset: (f32, f32),
     pub uv_rotated: bool,
+    pub is_water: bool,
 }
 
 impl Material {
@@ -28,6 +29,7 @@ impl Material {
             uv_scale: (1.0, 1.0),
             uv_offset: (0.0, 0.0),
             uv_rotated: false,
+            is_water: false,
         }
     }
 
@@ -54,6 +56,11 @@ impl Material {
 
     pub fn with_uv_rotated(mut self, rotated: bool) -> Self {
         self.uv_rotated = rotated;
+        self
+    }
+
+    pub fn with_water(mut self, is_water: bool) -> Self {
+        self.is_water = is_water;
         self
     }
 }
