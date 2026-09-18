@@ -380,7 +380,7 @@ pub fn draw_ui(framebuffer: &mut Framebuffer, inventory: &[(&str, Material)], ac
                     if px >= width || py >= height { continue; }
 
                     let u = bx as f32 / item_size as f32;
-                    let v = by as f32 / item_size as f32;
+                    let v = 1.0 - (by as f32 / item_size as f32);
                     
                     let mut u_map = u;
                     let mut v_map = v;
@@ -713,9 +713,12 @@ fn main() {
 
     // Inventory definition
     let uv_scale = (1.0 / 16.0, 1.0 / 16.0);
-    let dirt_mat = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0, 0.0])
+    let grass_mat = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0, 0.0])
         .with_texture(Arc::clone(&texture_atlas))
-        .with_uv(uv_scale, (2.0 / 16.0, 15.0 / 16.0));
+        .with_uv(uv_scale, (3.0 / 16.0, 15.0 / 16.0));
+    let grass_top = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0, 0.0])
+        .with_texture(Arc::clone(&texture_atlas))
+        .with_uv(uv_scale, (0.0, 15.0 / 16.0));
     let planks_mat = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0, 0.0])
         .with_texture(Arc::clone(&texture_atlas))
         .with_uv(uv_scale, (4.0 / 16.0, 15.0 / 16.0));
@@ -729,7 +732,7 @@ fn main() {
         .with_uv(uv_scale, (4.0 / 16.0, 12.0 / 16.0));
 
     let inventory = vec![
-        ("Tierra", dirt_mat),
+        ("Césped", grass_mat),
         ("Tablas", planks_mat),
         ("Piedra", stone_mat),
         ("Hojas", leaves_mat),
@@ -791,12 +794,24 @@ fn main() {
                 let hit_center_z = (intersect.point.z - intersect.normal.z * 0.01).round();
                 let new_center = Vec3::new(hit_center_x, hit_center_y, hit_center_z) + intersect.normal;
                 
+                let active_name = inventory[active_block_index].0;
                 let active_mat = inventory[active_block_index].1.clone();
-                objects.push(Box::new(Cube::new(
+                let mut cube = Cube::new(
                     new_center - Vec3::new(0.5, 0.5, 0.5),
                     new_center + Vec3::new(0.5, 0.5, 0.5),
                     active_mat,
-                )));
+                );
+
+                if active_name == "Césped" {
+                    let dirt = Material::new(Color::new(255, 255, 255), 10.0, [0.8, 0.1, 0.0, 0.0])
+                        .with_texture(Arc::clone(&texture_atlas))
+                        .with_uv(uv_scale, (2.0 / 16.0, 15.0 / 16.0));
+                        
+                    cube = cube.with_top_material(grass_top.clone())
+                               .with_bottom_material(dirt);
+                }
+
+                objects.push(Box::new(cube));
                 moved = true;
             }
         }
