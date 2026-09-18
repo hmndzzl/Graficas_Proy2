@@ -112,7 +112,7 @@ pub fn cast_shadow(
 pub fn shade(
     intersect: &Intersect,
     ray_origin: &Vec3,
-    light: &Light,
+    lights: &[Light],
     objects: &[Box<dyn RayIntersect>],
 ) -> Color {
     let base_color = match &intersect.material.texture {
@@ -128,33 +128,37 @@ pub fn shade(
         return base_color * 1.5;
     }
 
-    let light_direction = (light.position - intersect.point).normalize();
     let view_direction = (ray_origin - intersect.point).normalize();
+    let mut total_diffuse = Color::new(0, 0, 0);
+    let mut total_specular = Color::new(0, 0, 0);
 
-    let shadow_intensity = cast_shadow(intersect, &light_direction, light, objects);
-    let light_intensity = light.intensity * (1.0 - shadow_intensity);
+    for light in lights {
+        let light_direction = (light.position - intersect.point).normalize();
+        let shadow_intensity = cast_shadow(intersect, &light_direction, light, objects);
+        let light_intensity = light.intensity * (1.0 - shadow_intensity);
 
-    let diffuse_intensity = dot(&intersect.normal, &light_direction).max(0.0);
-    let diffuse = base_color * (diffuse_intensity * intersect.material.albedo[0] * light_intensity);
+        let diffuse_intensity = dot(&intersect.normal, &light_direction).max(0.0);
+        let diffuse = base_color * (diffuse_intensity * intersect.material.albedo[0] * light_intensity);
+        total_diffuse = total_diffuse + diffuse;
 
-    let reflect_direction = reflect(&-light_direction, &intersect.normal);
-    let specular_intensity = dot(&view_direction, &reflect_direction)
-        .max(0.0)
-        .powf(intersect.material.specular);
+        let reflect_direction = reflect(&-light_direction, &intersect.normal);
+        let specular_intensity = dot(&view_direction, &reflect_direction)
+            .max(0.0)
+            .powf(intersect.material.specular);
 
-    let specular =
-        light.color * (specular_intensity * intersect.material.albedo[1] * light_intensity);
+        let specular = light.color * (specular_intensity * intersect.material.albedo[1] * light_intensity);
+        total_specular = total_specular + specular;
+    }
 
     let ambient = base_color * 0.15;
-
-    diffuse + specular + ambient
+    total_diffuse + total_specular + ambient
 }
 
 pub fn cast_ray(
     ray_origin: &Vec3,
     ray_direction: &Vec3,
     objects: &[Box<dyn RayIntersect>],
-    light: &Light,
+    lights: &[Light],
     depth: u32,
     time_of_day: f32,
 ) -> Color {
@@ -179,7 +183,7 @@ pub fn cast_ray(
         return get_sky_color(ray_direction, time_of_day);
     };
 
-    let color = shade(&intersect, ray_origin, light, objects);
+    let color = shade(&intersect, ray_origin, lights, objects);
 
     let reflectivity = intersect.material.albedo[2];
     let transparency = intersect.material.albedo[3];
@@ -197,7 +201,7 @@ pub fn cast_ray(
             &reflect_origin,
             &reflect_direction,
             objects,
-            light,
+            lights,
             depth + 1,
             time_of_day,
         );
@@ -214,7 +218,7 @@ pub fn cast_ray(
             &refract_origin,
             &refract_direction,
             objects,
-            light,
+            lights,
             depth + 1,
             time_of_day,
         );
@@ -228,7 +232,7 @@ pub fn render(
     framebuffer: &mut Framebuffer,
     objects: &[Box<dyn RayIntersect>],
     camera: &Camera,
-    light: &Light,
+    lights: &[Light],
     time_of_day: f32,
     block_size: usize,
 ) {
@@ -258,7 +262,7 @@ pub fn render(
             let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
             let ray_direction = camera.basis_change(&ray_direction);
 
-            cast_ray(&camera.eye, &ray_direction, objects, light, 0, time_of_day).to_hex()
+            cast_ray(&camera.eye, &ray_direction, objects, lights, 0, time_of_day).to_hex()
         })
         .collect();
 
@@ -604,7 +608,7 @@ fn main() {
         }
 
         if camera_state < 2 {
-            let block_size = if camera_state == 0 { 4 } else { 1 };
+            let block_size = if camera_state == 0 { 2 } else { 1 }; // Render at half resolution when moving for a balance of speed and quality
             
             let angle = time_of_day * std::f32::consts::PI * 2.0 - std::f32::consts::PI / 2.0;
             let sun_y = angle.sin() * 10.0;
@@ -630,8 +634,9 @@ fn main() {
             };
 
             let current_light = Light::new(light_pos, light_color, intensity);
+            let lava_light = Light::new(Vec3::new(2.0, -3.0, 2.0), Color::new(255, 120, 0), 2.0);
 
-            render(&mut framebuffer, &objects, &camera, &current_light, time_of_day, block_size);
+            render(&mut framebuffer, &objects, &camera, &[current_light, lava_light], time_of_day, block_size);
             
             // Only advance to high-res if no keys are pressed (we stop moving)
             if !moved {
