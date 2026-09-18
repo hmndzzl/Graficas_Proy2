@@ -37,6 +37,28 @@ pub fn reflect(incident: &Vec3, normal: &Vec3) -> Vec3 {
     incident - normal * (2.0 * dot(incident, normal))
 }
 
+fn hash2(x: f32, y: f32) -> f32 {
+    let seed = x * 12.9898 + y * 78.233;
+    (seed.sin() * 43758.5453).fract().abs()
+}
+
+fn noise(x: f32, z: f32) -> f32 {
+    let ix = x.floor();
+    let iz = z.floor();
+    let fx = x - ix; // x.fract() in Rust preserves sign, which breaks noise for negative coords!
+    let fz = z - iz;
+    
+    let a = hash2(ix, iz);
+    let b = hash2(ix + 1.0, iz);
+    let c = hash2(ix, iz + 1.0);
+    let d = hash2(ix + 1.0, iz + 1.0);
+    
+    let ux = fx * fx * (3.0 - 2.0 * fx);
+    let uz = fz * fz * (3.0 - 2.0 * fz);
+    
+    a * (1.0 - ux) + b * ux + (c - a) * uz * (1.0 - ux) + (d - b) * ux * uz
+}
+
 pub fn get_sky_color(ray_direction: &Vec3, time_of_day: f32) -> Color {
     let day_zenith = Color::new(80, 150, 255);
     let day_horizon = Color::new(180, 220, 255);
@@ -71,6 +93,27 @@ pub fn get_sky_color(ray_direction: &Vec3, time_of_day: f32) -> Color {
             let star_brightness = (hash - 0.995) * 200.0;
             let visibility = (1.0 - day_factor * 5.0).clamp(0.0, 1.0);
             sky = sky + Color::new(255, 255, 255) * (star_brightness * visibility);
+        }
+    }
+
+    // Clouds
+    if day_factor > 0.0 && t_y > 0.0 {
+        let t_y_clamped = t_y.max(0.01);
+        let cloud_height = 100.0;
+        let offset = time_of_day * 1000.0; // Mover el bloque físico
+        
+        let cx = (ray_direction.x / t_y_clamped * cloud_height + offset).floor();
+        let cz = (ray_direction.z / t_y_clamped * cloud_height).floor();
+        
+        let n = noise(cx * 0.02, cz * 0.02);
+        
+        if n > 0.6 { // Threshold for clouds
+            let cloud_color = Color::new(255, 255, 255);
+            let cloud_alpha = (n - 0.6) * 5.0; // Edge smoothing
+            let distance_fade = (t_y * 5.0).clamp(0.0, 1.0); // Fade out near horizon instead of sharp cut
+            let cloud_alpha = cloud_alpha.clamp(0.0, 0.9) * day_factor * distance_fade;
+            
+            sky = sky * (1.0 - cloud_alpha) + cloud_color * cloud_alpha;
         }
     }
 
