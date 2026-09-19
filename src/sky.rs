@@ -93,7 +93,7 @@ pub fn get_sky_color(ray_direction: &Vec3, time_of_day: f32) -> Color {
         }
     }
 
-    // Stars
+    // Stars (medium density)
     if day_factor < 0.2 {
         let qx = (ray_direction.x * 500.0).round();
         let qy = (ray_direction.y * 500.0).round();
@@ -102,10 +102,127 @@ pub fn get_sky_color(ray_direction: &Vec3, time_of_day: f32) -> Color {
         let seed = qx * 12.9898 + qy * 78.233 + qz * 37.719;
         let hash = (seed.sin() * 43758.5453).fract().abs();
         
-        if hash > 0.995 {
-            let star_brightness = (hash - 0.995) * 200.0;
+        if hash > 0.997 {
+            let star_brightness = (hash - 0.997) * 400.0;
             let visibility = (1.0 - day_factor * 5.0).clamp(0.0, 1.0);
             sky = sky + Color::new(255, 255, 255) * (star_brightness * visibility);
+        }
+    }
+
+    // Cosmos / Milky Way (Advanced Algorithmic Art mimicking the reference image)
+    if day_factor < 0.4 {
+        // Milky Way stretches across the sky
+        let galactic_pole = nalgebra_glm::normalize(&Vec3::new(0.6, 0.4, 0.5));
+        let galactic_equator_dot = nalgebra_glm::dot(ray_direction, &galactic_pole);
+        
+        let offset = time_of_day * 0.05; // Extremely slow movement for cosmic scale
+        
+        // 3D-to-2D projection for seamless noise
+        let nx = ray_direction.x;
+        let ny = ray_direction.y;
+        let nz = ray_direction.z;
+        
+        // Base structure noise to warp the galaxy band (makes it twist organically)
+        // Lower frequency (1.0) and higher amplitude (0.8) for massive sweeping bends
+        let base_warp = noise(nx * 1.0 + offset, nz * 1.0 - offset);
+        let band_dist = (galactic_equator_dot + (base_warp - 0.5) * 0.8).abs();
+        
+        // The galaxy is thickest at the warped equator. 
+        // Lowered multiplier (1.5) makes the band wider and softer.
+        let galaxy_band = (1.0 - band_dist * 1.5).clamp(0.0, 1.0);
+        
+        // A strictly thinner band just for the core to prevent the "laser" effect at the ends.
+        // We add high-frequency noise here so the core isn't a perfectly straight line!
+        let core_noise = noise(nx * 8.0, nz * 8.0);
+        let core_dist = (band_dist + (core_noise - 0.5) * 0.15).abs();
+        let core_band = (1.0 - core_dist * 5.0).clamp(0.0, 1.0);
+        
+        if galaxy_band > 0.0 {
+            // High-detail Fractal Brownian Motion (FBM) for complex dust clouds and nebulas
+            let n1_xy = noise(nx * 1.5 + offset, ny * 1.5 - offset);
+            let n1_zy = noise(nz * 1.5 - offset, ny * 1.5 + offset);
+            let n1 = (n1_xy + n1_zy) * 0.5;
+            
+            let n2_xy = noise(nx * 3.0 - offset, ny * 3.0 + offset);
+            let n2_zy = noise(nz * 3.0 + offset, ny * 3.0 - offset);
+            let n2 = (n2_xy + n2_zy) * 0.25;
+            
+            let n3_xy = noise(nx * 6.0, nz * 6.0);
+            let n3 = n3_xy * 0.125;
+            
+            let n4_xy = noise(nx * 12.0, ny * 12.0);
+            let n4 = n4_xy * 0.0625;
+            
+            let fbm = n1 + n2 + n3 + n4; // Range ~ 0.0 to 0.9375
+            
+            // Create dark rifts and glowing edges by squaring the FBM to stretch the dark gaps
+            // Increased multiplier slightly to ensure dense clumps reach maximum intensity
+            let dust_clump = (fbm.powi(2) * 2.5 - 0.1).clamp(0.0, 1.0);
+            
+            let night_fade = (1.0 - day_factor * 2.5).clamp(0.0, 1.0);
+            // Removed powi(2) from galaxy_band to soften the hard line and make the fade much smoother
+            let intensity = galaxy_band * dust_clump * night_fade;
+            
+            if intensity > 0.01 {
+                let bg_color = Color::new(20, 5, 30); // Very dark space background
+                let purple_color = Color::new(130, 20, 150); // Vivid purple for the fringes
+                let dark_blue = Color::new(5, 20, 60); // Much darker blue transition
+                let mid_blue = Color::new(15, 50, 100); // Darker standard blue nebula (less "claro")
+                let core_color = Color::new(170, 210, 255); // Soft cyan/white center
+                
+                // Secondary noise layer to dictate where the purple gas clouds are
+                let purple_noise = noise(nx * 2.5 + offset, ny * 2.5 - offset);
+                
+                let mut dust_color = bg_color;
+                
+                // 1. Purple fringes at the very edges (lowest intensity)
+                if intensity > 0.02 {
+                    let t = ((intensity - 0.02) * 8.0).clamp(0.0, 1.0);
+                    let active_edge_color = if purple_noise > 0.4 {
+                        let p_blend = ((purple_noise - 0.4) * 2.0).clamp(0.0, 1.0);
+                        bg_color * (1.0 - p_blend) + purple_color * p_blend
+                    } else {
+                        bg_color
+                    };
+                    dust_color = dust_color * (1.0 - t) + active_edge_color * t;
+                }
+                
+                // 2. Transition into dark blue
+                if intensity > 0.15 {
+                    let t = ((intensity - 0.15) * 4.0).clamp(0.0, 1.0);
+                    dust_color = dust_color * (1.0 - t) + dark_blue * t;
+                }
+                
+                // 3. Transition into mid blue (Higher threshold = much smaller light blue area)
+                if intensity > 0.45 {
+                    let t = ((intensity - 0.45) * 3.0).clamp(0.0, 1.0);
+                    dust_color = dust_color * (1.0 - t) + mid_blue * t;
+                }
+                
+                // 4. Transition into bright core (Constrained by core_band so it's physically thin)
+                if intensity > 0.7 {
+                    // Multiplying by core_band forces the white/cyan color to ONLY exist in the 
+                    // exact center line of the galaxy, completely breaking up the thick "laser" look.
+                    let t = ((intensity - 0.7) * 4.0).clamp(0.0, 1.0) * core_band;
+                    dust_color = dust_color * (1.0 - t) + core_color * t;
+                }
+                
+                // Embedded dense tiny stars within the galaxy structure
+                let qx = (nx * 800.0).round();
+                let qy = (ny * 800.0).round();
+                let qz = (nz * 800.0).round();
+                let star_seed = qx * 12.9898 + qy * 78.233 + qz * 37.719;
+                let star_hash = (star_seed.sin() * 43758.5453).fract().abs();
+                
+                if star_hash > 0.985 { 
+                    // High density inside the milky way core, softer glow
+                    let star_glow = (star_hash - 0.985) * 200.0 * intensity;
+                    sky = sky + Color::new(255, 255, 255) * star_glow;
+                }
+                
+                // Additive blend for glowing stardust clouds
+                sky = sky + dust_color * (intensity * 1.2);
+            }
         }
     }
 
