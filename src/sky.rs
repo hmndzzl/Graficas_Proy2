@@ -33,7 +33,8 @@ pub fn get_sky_color(ray_direction: &Vec3, time_of_day: f32) -> Color {
     let sunset_horizon = Color::new(255, 120, 50);
 
     let t_y = ray_direction.y.max(0.0);
-    let sun_height = (time_of_day * std::f32::consts::PI * 2.0 - std::f32::consts::PI / 2.0).sin();
+    let angle = time_of_day * std::f32::consts::PI * 2.0 - std::f32::consts::PI / 2.0;
+    let sun_height = angle.sin();
     
     let day_factor = ((sun_height + 0.2) * 2.0).clamp(0.0, 1.0);
     let sunset_factor = (1.0 - sun_height.abs() * 3.0).clamp(0.0, 1.0);
@@ -43,6 +44,54 @@ pub fn get_sky_color(ray_direction: &Vec3, time_of_day: f32) -> Color {
     let current_horizon = base_horizon * (1.0 - sunset_factor) + sunset_horizon * sunset_factor;
     
     let mut sky = current_horizon * (1.0 - t_y) + current_zenith * t_y;
+
+    // Sun and Moon (Minecraft style: square and hidden below horizon)
+    if ray_direction.y > -0.05 {
+        let sun_x = angle.cos() * 10.0;
+        let sun_y = angle.sin() * 10.0;
+        let sun_dir = nalgebra_glm::normalize(&Vec3::new(sun_x, sun_y, 8.0));
+        let moon_dir = nalgebra_glm::normalize(&Vec3::new(-sun_x, -sun_y, -8.0));
+
+        let sun_dz = nalgebra_glm::dot(ray_direction, &sun_dir);
+        if sun_dz > 0.95 {
+            let sun_right = nalgebra_glm::normalize(&nalgebra_glm::cross(&sun_dir, &Vec3::new(0.0, 0.0, 1.0)));
+            let sun_up = nalgebra_glm::normalize(&nalgebra_glm::cross(&sun_right, &sun_dir));
+            let sun_dx = nalgebra_glm::dot(ray_direction, &sun_right);
+            let sun_dy = nalgebra_glm::dot(ray_direction, &sun_up);
+            
+            let scale = 1.0 / sun_dz;
+            let px = sun_dx * scale;
+            let py = sun_dy * scale;
+            
+            if px.abs() < 0.065 && py.abs() < 0.065 {
+                if px.abs() < 0.06 && py.abs() < 0.06 {
+                    sky = Color::new(255, 255, 220); // Sun core
+                } else {
+                    sky = sky * 0.5 + Color::new(255, 255, 200) * 0.5; // Sun border
+                }
+            }
+        }
+
+        let moon_dz = nalgebra_glm::dot(ray_direction, &moon_dir);
+        if moon_dz > 0.95 {
+            let moon_right = nalgebra_glm::normalize(&nalgebra_glm::cross(&moon_dir, &Vec3::new(0.0, 0.0, 1.0)));
+            let moon_up = nalgebra_glm::normalize(&nalgebra_glm::cross(&moon_right, &moon_dir));
+            let moon_dx = nalgebra_glm::dot(ray_direction, &moon_right);
+            let moon_dy = nalgebra_glm::dot(ray_direction, &moon_up);
+            
+            let scale = 1.0 / moon_dz;
+            let px = moon_dx * scale;
+            let py = moon_dy * scale;
+            
+            if px.abs() < 0.055 && py.abs() < 0.055 {
+                if px.abs() < 0.05 && py.abs() < 0.05 {
+                    sky = Color::new(220, 220, 255); // Moon core
+                } else {
+                    sky = sky * 0.5 + Color::new(200, 200, 255) * 0.5; // Moon border
+                }
+            }
+        }
+    }
 
     // Stars
     if day_factor < 0.2 {
