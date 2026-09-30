@@ -174,4 +174,8 @@ impl RayIntersect for Cube {
             v: v.clamp(0.0, 1.0),
         })
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
