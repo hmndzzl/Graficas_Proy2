@@ -296,16 +296,19 @@ pub fn render(
         })
         .collect();
 
-    for y in 0..height {
-        for x in 0..width {
-            let bx = x / block_size;
+    if block_size == 1 {
+        // Fast path for block_size == 1: just copy the memory directly
+        let len = framebuffer.buffer.len();
+        framebuffer.buffer.copy_from_slice(&block_colors[..len]);
+    } else {
+        // Parallelized scaling loop for block_size > 1
+        framebuffer.buffer.par_chunks_exact_mut(width).enumerate().for_each(|(y, row)| {
             let by = y / block_size;
-            let i = by * width_blocks + bx;
-            
-            let idx = y * width + x;
-            if idx < framebuffer.buffer.len() {
-                framebuffer.buffer[idx] = block_colors[i];
+            let row_offset = by * width_blocks;
+            for x in 0..width {
+                let bx = x / block_size;
+                row[x] = block_colors[row_offset + bx];
             }
-        }
+        });
     }
 }
