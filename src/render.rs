@@ -63,34 +63,30 @@ pub fn cast_shadow(
     intersect: &Intersect,
     light_direction: &Vec3,
     light: &Light,
-    objects: &[Box<dyn RayIntersect>],
+    world: &dyn RayIntersect,
 ) -> f32 {
     let shadow_ray_origin = intersect.point + intersect.normal * SHADOW_BIAS;
     let light_distance = (light.position - intersect.point).magnitude();
 
-    let mut shadow_intensity = 0.0;
-
-    for object in objects {
-        if let Some(shadow_intersect) = object.ray_intersect(&shadow_ray_origin, light_direction) {
-            if shadow_intersect.distance < light_distance {
-                let transparency = shadow_intersect.material.albedo[3];
-                if transparency > 0.0 {
-                    shadow_intensity += 1.0 - transparency;
-                } else {
-                    return 1.0;
-                }
+    if let Some(shadow_intersect) = world.ray_intersect(&shadow_ray_origin, light_direction) {
+        if shadow_intersect.distance < light_distance {
+            let transparency = shadow_intersect.material.albedo[3];
+            if transparency > 0.0 {
+                return 1.0 - transparency;
+            } else {
+                return 1.0;
             }
         }
     }
 
-    shadow_intensity.min(1.0)
+    0.0
 }
 
 pub fn shade(
     intersect: &Intersect,
     ray_origin: &Vec3,
     lights: &[Light],
-    objects: &[Box<dyn RayIntersect>],
+    world: &dyn RayIntersect,
 ) -> Color {
     let base_color = match &intersect.material.texture {
         Some(texture) => {
@@ -120,7 +116,7 @@ pub fn shade(
 
     for light in lights {
         let light_direction = (light.position - intersect.point).normalize();
-        let shadow_intensity = cast_shadow(intersect, &light_direction, light, objects);
+        let shadow_intensity = cast_shadow(intersect, &light_direction, light, world);
         let light_intensity = light.intensity * (1.0 - shadow_intensity);
 
         let diffuse_intensity = dot(&intersect.normal, &light_direction).max(0.0);
@@ -143,31 +139,18 @@ pub fn shade(
 pub fn cast_ray(
     ray_origin: &Vec3,
     ray_direction: &Vec3,
-    objects: &[Box<dyn RayIntersect>],
+    world: &dyn RayIntersect,
     lights: &[Light],
     depth: u32,
     time_of_day: f32,
-    selected_index: Option<usize>,
+    selected_voxel: Option<[i32; 3]>,
     sky_mode: SkyMode,
 ) -> Color {
     if depth > MAX_DEPTH {
         return background_color(ray_direction, time_of_day, sky_mode);
     }
 
-    let mut closest: Option<Intersect> = None;
-    let mut closest_i: Option<usize> = None;
-
-    for (i, object) in objects.iter().enumerate() {
-        if let Some(intersect) = object.ray_intersect(ray_origin, ray_direction) {
-            if closest
-                .as_ref()
-                .is_none_or(|current| intersect.distance < current.distance)
-            {
-                closest = Some(intersect);
-                closest_i = Some(i);
-            }
-        }
-    }
+    let closest = world.ray_intersect(ray_origin, ray_direction);
 
     if closest.is_none() {
         return background_color(ray_direction, time_of_day, sky_mode);
@@ -181,10 +164,17 @@ pub fn cast_ray(
         intersect.normal = (intersect.normal + Vec3::new(nx - 0.5, 0.0, nz - 0.5) * 0.3).normalize();
     }
 
-    let mut color = shade(&intersect, ray_origin, lights, objects);
+    let mut color = shade(&intersect, ray_origin, lights, world);
 
-    if selected_index.is_some() && closest_i == selected_index {
-        color = color + Color::new(80, 80, 80);
+    if let Some(voxel) = selected_voxel {
+        let hit_voxel = [
+            (intersect.point.x - intersect.normal.x * 0.01).round() as i32,
+            (intersect.point.y - intersect.normal.y * 0.01).round() as i32,
+            (intersect.point.z - intersect.normal.z * 0.01).round() as i32,
+        ];
+        if voxel == hit_voxel {
+            color = color + Color::new(80, 80, 80);
+        }
     }
 
     let reflectivity = intersect.material.albedo[2];
@@ -202,7 +192,7 @@ pub fn cast_ray(
         let reflected = cast_ray(
             &reflect_origin,
             &reflect_direction,
-            objects,
+            world,
             lights,
             depth + 1,
             time_of_day,
@@ -221,7 +211,7 @@ pub fn cast_ray(
         let refracted = cast_ray(
             &refract_origin,
             &refract_direction,
-            objects,
+            world,
             lights,
             depth + 1,
             time_of_day,
@@ -248,12 +238,12 @@ pub fn cast_ray(
 
 pub fn render(
     framebuffer: &mut Framebuffer,
-    objects: &[Box<dyn RayIntersect>],
+    world: &dyn RayIntersect,
     camera: &Camera,
     lights: &[Light],
     time_of_day: f32,
     block_size: usize,
-    selected_index: Option<usize>,
+    selected_voxel: Option<[i32; 3]>,
     sky_mode: SkyMode,
 ) {
     let width = framebuffer.width;
@@ -285,11 +275,11 @@ pub fn render(
             cast_ray(
                 &camera.eye,
                 &ray_direction,
-                objects,
+                world,
                 lights,
                 0,
                 time_of_day,
-                selected_index,
+                selected_voxel,
                 sky_mode,
             )
             .to_hex()

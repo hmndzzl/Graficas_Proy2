@@ -9,6 +9,7 @@ mod render;
 mod sky;
 mod texture;
 mod ui;
+mod voxel_grid;
 
 use camera::Camera;
 use color::Color;
@@ -25,6 +26,8 @@ use texture::Texture;
 use diorama::{build_diorama, build_inventory, build_nether_diorama, tex_mat, DEFAULT_WORLD_SEED};
 use render::{render, SkyMode};
 use ui::draw_ui;
+use ray_intersect::RayIntersect;
+use voxel_grid::World;
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
@@ -52,7 +55,9 @@ fn main() {
 
     let texture_atlas = Arc::new(Texture::new("assets/textures.png"));
 
-    let mut objects = build_diorama(&texture_atlas, world_seed);
+    let mut overworld = World::from_objects(build_diorama(&texture_atlas, world_seed));
+    let mut nether = World::from_objects(build_nether_diorama(&texture_atlas, world_seed ^ 0x4E45_5448_4552));
+    
     let inventory = build_inventory(&texture_atlas);
     let mut realm = Realm::Overworld;
 
@@ -115,16 +120,22 @@ fn main() {
         // Block Selection Raycasting
         let center_ray = normalize(&Vec3::new(0.0, 0.0, -1.0));
         let center_ray = camera.basis_change(&center_ray);
-        let mut selected_block: Option<(usize, crate::ray_intersect::Intersect)> = None;
-        for (i, object) in objects.iter().enumerate() {
-            if let Some(intersect) = object.ray_intersect(&camera.eye, &center_ray) {
+        let mut selected_block: Option<([i32; 3], crate::ray_intersect::Intersect)> = None;
+        
+        {
+            let world = match realm {
+                Realm::Overworld => &overworld,
+                Realm::Nether => &nether,
+            };
+            
+            if let Some(intersect) = world.ray_intersect(&camera.eye, &center_ray) {
                 if intersect.distance < 10.0 {
-                    if selected_block
-                        .as_ref()
-                        .is_none_or(|(_, current)| intersect.distance < current.distance)
-                    {
-                        selected_block = Some((i, intersect));
-                    }
+                    let hit_voxel = [
+                        (intersect.point.x - intersect.normal.x * 0.01).round() as i32,
+                        (intersect.point.y - intersect.normal.y * 0.01).round() as i32,
+                        (intersect.point.z - intersect.normal.z * 0.01).round() as i32,
+                    ];
+                    selected_block = Some((hit_voxel, intersect));
                 }
             }
         }
@@ -140,10 +151,7 @@ fn main() {
                 Realm::Overworld => Realm::Nether,
                 Realm::Nether => Realm::Overworld,
             };
-            objects = match realm {
-                Realm::Overworld => build_diorama(&texture_atlas, world_seed),
-                Realm::Nether => build_nether_diorama(&texture_atlas, world_seed ^ 0x4E45_5448_4552),
-            };
+            // world dynamically selected
             camera = spawn_camera(realm);
             selected_block = None;
             moved = true;
@@ -171,14 +179,25 @@ fn main() {
                         .with_bottom_material(tex_mat(&texture_atlas, 2.0, 15.0)); // dirt
                 }
 
-                objects.push(Box::new(cube));
+                let current_world = match realm {
+                    Realm::Overworld => &mut overworld,
+                    Realm::Nether => &mut nether,
+                };
+                let nx = new_center.x.round() as i32;
+                let ny = new_center.y.round() as i32;
+                let nz = new_center.z.round() as i32;
+                current_world.grid.insert(nx, ny, nz, cube);
                 moved = true;
             }
         }
 
         if window.is_key_pressed(Key::X, minifb::KeyRepeat::No) {
-            if let Some((idx, _)) = selected_block {
-                objects.remove(idx);
+            if let Some((voxel, _)) = selected_block {
+                let current_world = match realm {
+                    Realm::Overworld => &mut overworld,
+                    Realm::Nether => &mut nether,
+                };
+                current_world.grid.remove(voxel[0], voxel[1], voxel[2]);
                 moved = true;
             }
         }
@@ -252,16 +271,21 @@ fn main() {
                 ),
             };
 
-            let selected_index = selected_block.as_ref().map(|(i, _)| *i);
+            let selected_voxel = selected_block.as_ref().map(|(v, _)| *v);
+
+            let render_world = match realm {
+                Realm::Overworld => &overworld,
+                Realm::Nether => &nether,
+            };
 
             render(
                 &mut framebuffer,
-                &objects,
+                render_world,
                 &camera,
                 &lights,
                 time_of_day,
                 block_size,
-                selected_index,
+                selected_voxel,
                 sky_mode,
             );
 
