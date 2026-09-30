@@ -22,21 +22,28 @@ use std::sync::Arc;
 use std::time::Duration;
 use texture::Texture;
 
-use diorama::{build_diorama, build_inventory, tex_mat};
-use render::render;
+use diorama::{build_diorama, build_inventory, build_nether_diorama, tex_mat, DEFAULT_WORLD_SEED};
+use render::{render, SkyMode};
 use ui::draw_ui;
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
 const ROTATION_SPEED: f32 = PI / 60.0;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Realm {
+    Overworld,
+    Nether,
+}
+
 fn main() {
     let frame_delay = Duration::from_millis(16);
+    let world_seed = read_world_seed();
 
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
 
     let mut window = Window::new(
-        "Minecraft Raytracer Diorama",
+        &format!("Minecraft Raytracer Diorama — seed {world_seed}"),
         WIDTH,
         HEIGHT,
         WindowOptions::default(),
@@ -45,18 +52,15 @@ fn main() {
 
     let texture_atlas = Arc::new(Texture::new("assets/textures.png"));
 
-    let mut objects = build_diorama(&texture_atlas);
+    let mut objects = build_diorama(&texture_atlas, world_seed);
     let inventory = build_inventory(&texture_atlas);
+    let mut realm = Realm::Overworld;
 
     let mut active_block_index = 0;
 
     let mut time_of_day = 0.5; // Noon
 
-    let mut camera = Camera::new(
-        Vec3::new(0.0, 2.0, 5.5),
-        Vec3::new(0.0, 0.3, 0.0),
-        Vec3::new(0.0, 1.0, 0.0),
-    );
+    let mut camera = spawn_camera(realm);
 
     let mut camera_state = 0; // 0 = Moving (Render Low Res), 1 = Stopped (Render High Res), 2 = Done
 
@@ -99,6 +103,14 @@ fn main() {
             active_block_index = 4;
             moved = true;
         }
+        if window.is_key_pressed(Key::Key6, minifb::KeyRepeat::No) {
+            active_block_index = 5;
+            moved = true;
+        }
+        if window.is_key_pressed(Key::Key7, minifb::KeyRepeat::No) {
+            active_block_index = 6;
+            moved = true;
+        }
 
         // Block Selection Raycasting
         let center_ray = normalize(&Vec3::new(0.0, 0.0, -1.0));
@@ -115,6 +127,26 @@ fn main() {
                     }
                 }
             }
+        }
+
+        // La transición sólo se activa al mirar directamente la superficie morada
+        // del portal; E sobre la obsidiana no cambia de escena por accidente.
+        if window.is_key_pressed(Key::E, minifb::KeyRepeat::No)
+            && selected_block
+                .as_ref()
+                .is_some_and(|(_, hit)| hit.material.is_portal)
+        {
+            realm = match realm {
+                Realm::Overworld => Realm::Nether,
+                Realm::Nether => Realm::Overworld,
+            };
+            objects = match realm {
+                Realm::Overworld => build_diorama(&texture_atlas, world_seed),
+                Realm::Nether => build_nether_diorama(&texture_atlas, world_seed ^ 0x4E45_5448_4552),
+            };
+            camera = spawn_camera(realm);
+            selected_block = None;
+            moved = true;
         }
 
         if window.is_key_pressed(Key::Space, minifb::KeyRepeat::No) {
@@ -192,31 +224,33 @@ fn main() {
         if camera_state < 2 {
             let block_size = if camera_state == 0 { 2 } else { 1 }; // Render at half resolution when moving for a balance of speed and quality
 
-            let angle = time_of_day * std::f32::consts::PI * 2.0 - std::f32::consts::PI / 2.0;
-            let sun_y = angle.sin() * 10.0;
-            let sun_x = angle.cos() * 10.0;
-
-            let is_day = sun_y > 0.0;
-            let intensity = if is_day {
-                1.5 * (sun_y / 10.0).clamp(0.2, 1.0)
-            } else {
-                0.3 // Moonlight
+            let (lights, sky_mode) = match realm {
+                Realm::Overworld => {
+                    let angle = time_of_day * std::f32::consts::PI * 2.0 - std::f32::consts::PI / 2.0;
+                    let sun_y = angle.sin() * 10.0;
+                    let sun_x = angle.cos() * 10.0;
+                    let is_day = sun_y > 0.0;
+                    let intensity = if is_day { 1.5 * (sun_y / 10.0).clamp(0.2, 1.0) } else { 0.3 };
+                    let light_color = if is_day { Color::new(255, 255, 255) } else { Color::new(100, 100, 255) };
+                    let light_pos = if is_day { Vec3::new(sun_x, sun_y, 8.0) } else { Vec3::new(-sun_x, -sun_y, -8.0) };
+                    (
+                        vec![
+                            Light::new(light_pos, light_color, intensity),
+                            Light::new(Vec3::new(0.0, -3.0, 1.5), Color::new(255, 120, 0), 2.3),
+                            Light::new(Vec3::new(7.5, 3.5, 3.0), Color::new(185, 65, 255), 0.55),
+                        ],
+                        SkyMode::Overworld,
+                    )
+                }
+                Realm::Nether => (
+                    vec![
+                        Light::new(Vec3::new(4.5, 2.5, 0.0), Color::new(255, 70, 12), 2.6),
+                        Light::new(Vec3::new(-2.5, 7.0, -1.0), Color::new(255, 160, 55), 1.5),
+                        Light::new(Vec3::new(-0.5, 3.5, 3.0), Color::new(185, 65, 255), 0.7),
+                    ],
+                    SkyMode::Nether,
+                ),
             };
-
-            let light_color = if is_day {
-                Color::new(255, 255, 255)
-            } else {
-                Color::new(100, 100, 255)
-            };
-
-            let light_pos = if is_day {
-                Vec3::new(sun_x, sun_y, 8.0)
-            } else {
-                Vec3::new(-sun_x, -sun_y, -8.0)
-            };
-
-            let current_light = Light::new(light_pos, light_color, intensity);
-            let lava_light = Light::new(Vec3::new(2.0, -3.0, 2.0), Color::new(255, 120, 0), 2.0);
 
             let selected_index = selected_block.as_ref().map(|(i, _)| *i);
 
@@ -224,10 +258,11 @@ fn main() {
                 &mut framebuffer,
                 &objects,
                 &camera,
-                &[current_light, lava_light],
+                &lights,
                 time_of_day,
                 block_size,
                 selected_index,
+                sky_mode,
             );
 
             draw_ui(&mut framebuffer, &inventory, active_block_index);
@@ -244,4 +279,32 @@ fn main() {
 
         std::thread::sleep(frame_delay);
     }
+}
+
+fn spawn_camera(realm: Realm) -> Camera {
+    match realm {
+        Realm::Overworld => Camera::new(
+            Vec3::new(0.0, 2.0, 5.5),
+            Vec3::new(0.0, 0.3, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+        ),
+        Realm::Nether => Camera::new(
+            Vec3::new(0.0, 3.0, 11.0),
+            Vec3::new(-0.5, 3.2, 4.0),
+            Vec3::new(0.0, 1.0, 0.0),
+        ),
+    }
+}
+
+fn read_world_seed() -> u64 {
+    let args: Vec<String> = std::env::args().collect();
+    args.windows(2)
+        .find_map(|pair| (pair[0] == "--seed").then(|| pair[1].parse().ok()).flatten())
+        .or_else(|| {
+            args.iter().find_map(|arg| {
+                arg.strip_prefix("--seed=")
+                    .and_then(|value| value.parse().ok())
+            })
+        })
+        .unwrap_or(DEFAULT_WORLD_SEED)
 }

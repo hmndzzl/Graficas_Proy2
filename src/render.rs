@@ -13,6 +13,25 @@ pub const SHADOW_BIAS: f32 = 1e-3;
 pub const REFLECTION_BIAS: f32 = 1e-3;
 pub const MAX_DEPTH: u32 = 3;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SkyMode {
+    Overworld,
+    Nether,
+}
+
+fn background_color(ray_direction: &Vec3, time_of_day: f32, sky_mode: SkyMode) -> Color {
+    match sky_mode {
+        SkyMode::Overworld => get_sky_color(ray_direction, time_of_day),
+        SkyMode::Nether => {
+            // Niebla volcánica oscura: no se reutiliza el cielo azul del mundo normal.
+            let horizon_glow = (1.0 - ray_direction.y.abs()).clamp(0.0, 1.0);
+            let ceiling_darkness = ((ray_direction.y + 1.0) * 0.5).clamp(0.0, 1.0);
+            Color::new(42, 7, 10) * (0.65 + horizon_glow * 0.35)
+                + Color::new(35, 8, 5) * (1.0 - ceiling_darkness) * 0.35
+        }
+    }
+}
+
 pub fn reflect(incident: &Vec3, normal: &Vec3) -> Vec3 {
     incident - normal * (2.0 * dot(incident, normal))
 }
@@ -129,9 +148,10 @@ pub fn cast_ray(
     depth: u32,
     time_of_day: f32,
     selected_index: Option<usize>,
+    sky_mode: SkyMode,
 ) -> Color {
     if depth > MAX_DEPTH {
-        return get_sky_color(ray_direction, time_of_day);
+        return background_color(ray_direction, time_of_day, sky_mode);
     }
 
     let mut closest: Option<Intersect> = None;
@@ -150,7 +170,7 @@ pub fn cast_ray(
     }
 
     if closest.is_none() {
-        return get_sky_color(ray_direction, time_of_day);
+        return background_color(ray_direction, time_of_day, sky_mode);
     }
     let mut intersect = closest.unwrap();
 
@@ -187,6 +207,7 @@ pub fn cast_ray(
             depth + 1,
             time_of_day,
             None,
+            sky_mode,
         );
         final_color = final_color + reflected * reflectivity;
     }
@@ -205,6 +226,7 @@ pub fn cast_ray(
             depth + 1,
             time_of_day,
             None,
+            sky_mode,
         );
         final_color = final_color + refracted * transparency;
     }
@@ -216,7 +238,7 @@ pub fn cast_ray(
         let fog_factor = ((intersect.distance - fog_start) / (fog_end - fog_start)).clamp(0.0, 1.0);
         
         if fog_factor > 0.0 {
-            let sky_color = get_sky_color(ray_direction, time_of_day);
+            let sky_color = background_color(ray_direction, time_of_day, sky_mode);
             final_color = final_color * (1.0 - fog_factor) + sky_color * fog_factor;
         }
     }
@@ -232,6 +254,7 @@ pub fn render(
     time_of_day: f32,
     block_size: usize,
     selected_index: Option<usize>,
+    sky_mode: SkyMode,
 ) {
     let width = framebuffer.width;
     let height = framebuffer.height;
@@ -259,7 +282,17 @@ pub fn render(
             let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
             let ray_direction = camera.basis_change(&ray_direction);
 
-            cast_ray(&camera.eye, &ray_direction, objects, lights, 0, time_of_day, selected_index).to_hex()
+            cast_ray(
+                &camera.eye,
+                &ray_direction,
+                objects,
+                lights,
+                0,
+                time_of_day,
+                selected_index,
+                sky_mode,
+            )
+            .to_hex()
         })
         .collect();
 
