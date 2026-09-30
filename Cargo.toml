@@ -11,4 +11,4 @@ image = "0.24"
 rayon = "1.7"
 
 [profile.dev]
-opt-level = 10
+opt-level = 3
