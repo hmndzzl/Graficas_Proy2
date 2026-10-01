@@ -1,9 +1,8 @@
 use crate::cube::Cube;
-use crate::ray_intersect::{Intersect, RayIntersect, Material};
+use crate::ray_intersect::{Intersect, Material, RayIntersect};
+use crate::texture::Texture;
 use nalgebra_glm::Vec3;
 use std::sync::Arc;
-use crate::texture::Texture;
-use crate::color::Color;
 
 pub struct Pig {
     pub position: Vec3,
@@ -22,21 +21,13 @@ pub struct Pig {
 fn rotate_y(v: &Vec3, angle: f32) -> Vec3 {
     let c = angle.cos();
     let s = angle.sin();
-    Vec3::new(
-        v.x * c + v.z * s,
-        v.y,
-        -v.x * s + v.z * c
-    )
+    Vec3::new(v.x * c + v.z * s, v.y, -v.x * s + v.z * c)
 }
 
 fn rotate_x(v: &Vec3, angle: f32) -> Vec3 {
     let c = angle.cos();
     let s = angle.sin();
-    Vec3::new(
-        v.x,
-        v.y * c - v.z * s,
-        v.y * s + v.z * c
-    )
+    Vec3::new(v.x, v.y * c - v.z * s, v.y * s + v.z * c)
 }
 
 fn skin_mat(atlas: &Arc<Texture>, x: f32, y: f32, w: f32, h: f32) -> Material {
@@ -44,16 +35,26 @@ fn skin_mat(atlas: &Arc<Texture>, x: f32, y: f32, w: f32, h: f32) -> Material {
     let scale_v = h / 64.0;
     let offset_u = x / 64.0;
     let offset_v = 1.0 - (y + h) / 64.0;
-    Material::new(crate::color::Color::new(255, 255, 255), 0.0, [0.8, 0.1, 0.0, 0.0])
-        .with_texture(Arc::clone(atlas))
-        .with_uv((scale_u, scale_v), (offset_u, offset_v))
+    Material::new(
+        crate::color::Color::new(255, 255, 255),
+        0.0,
+        [0.8, 0.1, 0.0, 0.0],
+    )
+    .with_texture(Arc::clone(atlas))
+    .with_uv((scale_u, scale_v), (offset_u, offset_v))
 }
 
-fn map_cube(min: Vec3, max: Vec3, atlas: &Arc<Texture>, 
-    top: (f32,f32,f32,f32), bottom: (f32,f32,f32,f32), 
-    front: (f32,f32,f32,f32), back: (f32,f32,f32,f32), 
-    left: (f32,f32,f32,f32), right: (f32,f32,f32,f32)) -> Cube {
-    
+fn map_cube(
+    min: Vec3,
+    max: Vec3,
+    atlas: &Arc<Texture>,
+    top: (f32, f32, f32, f32),
+    bottom: (f32, f32, f32, f32),
+    front: (f32, f32, f32, f32),
+    back: (f32, f32, f32, f32),
+    left: (f32, f32, f32, f32),
+    right: (f32, f32, f32, f32),
+) -> Cube {
     let base = skin_mat(atlas, front.0, front.1, front.2, front.3);
     let mut c = Cube::new(min, max, base);
     c = c.with_top_material(skin_mat(atlas, top.0, top.1, top.2, top.3));
@@ -69,28 +70,28 @@ impl Pig {
     pub fn new(position: Vec3, atlas: &Arc<Texture>) -> Self {
         // Body: 10x16x8 pixels (W x L x H)
         let body = map_cube(
-            Vec3::new(-5.0/16.0, 6.0/16.0, -8.0/16.0), 
-            Vec3::new(5.0/16.0, 14.0/16.0, 8.0/16.0), 
+            Vec3::new(-5.0 / 16.0, 6.0 / 16.0, -8.0 / 16.0),
+            Vec3::new(5.0 / 16.0, 14.0 / 16.0, 8.0 / 16.0),
             atlas,
             (36.0, 16.0, 10.0, 16.0), // Top
             (46.0, 16.0, 10.0, 16.0), // Bottom
             (36.0, 8.0, 10.0, 8.0),   // Front (+Z)
             (46.0, 8.0, 10.0, 8.0),   // Back (-Z)
             (46.0, 16.0, 8.0, 16.0),  // Left (-X)
-            (28.0, 16.0, 8.0, 16.0)   // Right (+X)
+            (28.0, 16.0, 8.0, 16.0),  // Right (+X)
         );
 
         // Head: 8x8x8 pixels
         let head = map_cube(
-            Vec3::new(-4.0/16.0, 8.0/16.0, 8.0/16.0), 
-            Vec3::new(4.0/16.0, 16.0/16.0, 16.0/16.0), 
+            Vec3::new(-4.0 / 16.0, 8.0 / 16.0, 8.0 / 16.0),
+            Vec3::new(4.0 / 16.0, 16.0 / 16.0, 16.0 / 16.0),
             atlas,
-            (8.0, 0.0, 8.0, 8.0),   // Top
-            (16.0, 0.0, 8.0, 8.0),  // Bottom
-            (8.0, 8.0, 8.0, 8.0),   // Front (+Z)
-            (24.0, 8.0, 8.0, 8.0),  // Back (-Z)
-            (16.0, 8.0, 8.0, 8.0),  // Left (-X)
-            (0.0, 8.0, 8.0, 8.0)    // Right (+X)
+            (8.0, 0.0, 8.0, 8.0),  // Top
+            (16.0, 0.0, 8.0, 8.0), // Bottom
+            (8.0, 8.0, 8.0, 8.0),  // Front (+Z)
+            (24.0, 8.0, 8.0, 8.0), // Back (-Z)
+            (16.0, 8.0, 8.0, 8.0), // Left (-X)
+            (0.0, 8.0, 8.0, 8.0),  // Right (+X)
         );
 
         // Legs: 4x6x4 pixels
@@ -101,10 +102,50 @@ impl Pig {
         let leg_left = (8.0, 20.0, 4.0, 6.0);
         let leg_right = (0.0, 20.0, 4.0, 6.0);
 
-        let leg_fl = map_cube(Vec3::new(1.0/16.0, 0.0, 4.0/16.0), Vec3::new(5.0/16.0, 6.0/16.0, 8.0/16.0), atlas, leg_top, leg_bottom, leg_front, leg_back, leg_left, leg_right);
-        let leg_fr = map_cube(Vec3::new(-5.0/16.0, 0.0, 4.0/16.0), Vec3::new(-1.0/16.0, 6.0/16.0, 8.0/16.0), atlas, leg_top, leg_bottom, leg_front, leg_back, leg_left, leg_right);
-        let leg_bl = map_cube(Vec3::new(1.0/16.0, 0.0, -7.0/16.0), Vec3::new(5.0/16.0, 6.0/16.0, -3.0/16.0), atlas, leg_top, leg_bottom, leg_front, leg_back, leg_left, leg_right);
-        let leg_br = map_cube(Vec3::new(-5.0/16.0, 0.0, -7.0/16.0), Vec3::new(-1.0/16.0, 6.0/16.0, -3.0/16.0), atlas, leg_top, leg_bottom, leg_front, leg_back, leg_left, leg_right);
+        let leg_fl = map_cube(
+            Vec3::new(1.0 / 16.0, 0.0, 4.0 / 16.0),
+            Vec3::new(5.0 / 16.0, 6.0 / 16.0, 8.0 / 16.0),
+            atlas,
+            leg_top,
+            leg_bottom,
+            leg_front,
+            leg_back,
+            leg_left,
+            leg_right,
+        );
+        let leg_fr = map_cube(
+            Vec3::new(-5.0 / 16.0, 0.0, 4.0 / 16.0),
+            Vec3::new(-1.0 / 16.0, 6.0 / 16.0, 8.0 / 16.0),
+            atlas,
+            leg_top,
+            leg_bottom,
+            leg_front,
+            leg_back,
+            leg_left,
+            leg_right,
+        );
+        let leg_bl = map_cube(
+            Vec3::new(1.0 / 16.0, 0.0, -7.0 / 16.0),
+            Vec3::new(5.0 / 16.0, 6.0 / 16.0, -3.0 / 16.0),
+            atlas,
+            leg_top,
+            leg_bottom,
+            leg_front,
+            leg_back,
+            leg_left,
+            leg_right,
+        );
+        let leg_br = map_cube(
+            Vec3::new(-5.0 / 16.0, 0.0, -7.0 / 16.0),
+            Vec3::new(-1.0 / 16.0, 6.0 / 16.0, -3.0 / 16.0),
+            atlas,
+            leg_top,
+            leg_bottom,
+            leg_front,
+            leg_back,
+            leg_left,
+            leg_right,
+        );
 
         Pig {
             position,
@@ -132,7 +173,10 @@ impl RayIntersect for Pig {
             let o = rotate_x(&(local_origin - pivot), -angle) + pivot;
             let d = rotate_x(&local_direction, -angle);
             if let Some(mut intersect) = cube.ray_intersect(&o, &d) {
-                if closest_intersect.as_ref().is_none_or(|c| intersect.distance < c.distance) {
+                if closest_intersect
+                    .as_ref()
+                    .is_none_or(|c| intersect.distance < c.distance)
+                {
                     intersect.point = pivot + rotate_x(&(intersect.point - pivot), angle);
                     intersect.normal = rotate_x(&intersect.normal, angle);
                     closest_intersect = Some(intersect);
@@ -145,8 +189,8 @@ impl RayIntersect for Pig {
 
         // Pivots for the legs are around their top: y = 6.0/16.0
         // And centered on their respective Z coordinates to prevent orbiting!
-        let pivot_front = Vec3::new(0.0, 6.0/16.0, 6.0/16.0);
-        let pivot_back = Vec3::new(0.0, 6.0/16.0, -5.0/16.0);
+        let pivot_front = Vec3::new(0.0, 6.0 / 16.0, 6.0 / 16.0);
+        let pivot_back = Vec3::new(0.0, 6.0 / 16.0, -5.0 / 16.0);
 
         check(&self.leg_fl, self.leg_angle, pivot_front);
         check(&self.leg_br, self.leg_angle, pivot_back);
@@ -166,15 +210,11 @@ impl RayIntersect for Pig {
         self
     }
 
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-
     fn update(&mut self, _time: f32) {
         self.time += 0.05;
-        
+
         // Circular movement around (2, 2)
-        // velocity = (-sin, cos). atan2(-sin, cos) = -time. 
+        // velocity = (-sin, cos). atan2(-sin, cos) = -time.
         self.rotation = -self.time * 0.5;
         self.position.x = 2.0 + (self.time * 0.5).cos() * 3.0;
         self.position.z = 2.0 + (self.time * 0.5).sin() * 3.0;
