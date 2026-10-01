@@ -77,14 +77,233 @@ pub fn build_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn Ray
         .with_refractive_index(1.33)
         .with_water(true);
     let lava_mat = tex_mat(texture_atlas, 15.0, 0.0).with_emission(true);
+    let lamp_mat = Material::new(Color::new(255, 250, 220), 0.0, [1.0, 0.0, 0.0, 0.0]).with_emission(true);
 
-    // Superficie amplia. El lago queda excavado para que el agua no flote.
-    const RADIUS: i32 = 16;
-    for x in -RADIUS..=RADIUS {
-        for z in -RADIUS..=RADIUS {
-            let distance = ((x * x + z * z) as f32).sqrt();
-            let edge = seeded_noise(seed, x, z) * 0.85;
-            if distance > RADIUS as f32 - 0.35 + edge || is_lake(x, z) {
+    const RADIUS: i32 = 36;
+    
+    // --- Isla Principal ---
+    add_island_surface(&mut objects, 0, 0, RADIUS, false, &grass_side, &grass_top, &dirt_mat, seed);
+    add_voxel_island(&mut objects, 0, 0, RADIUS, false, &dirt_mat, &stone_mat, seed);
+    
+    // --- Isla Pequeña (Portal) ---
+    const SMALL_RADIUS: i32 = 12;
+    add_island_surface(&mut objects, 0, -65, SMALL_RADIUS, true, &grass_side, &grass_top, &dirt_mat, seed ^ 0x9999);
+    add_voxel_island(&mut objects, 0, -65, SMALL_RADIUS, true, &dirt_mat, &stone_mat, seed ^ 0x9999);
+    
+    // --- Puente Colgante Decorado ---
+    for z in -53..=-35 {
+        for x in -2..=2 {
+            // Un poco de hundimiento en el centro del puente para darle efecto colgante
+            let drop = -((z + 44) as f32 / 9.0).powi(2) * 0.5 + 0.5; // arco suave
+            let y_bridge = -drop;
+            
+            if x >= -1 && x <= 1 {
+                // Suelo del puente
+                objects.push(Box::new(unit_cube(x as f32, y_bridge, z as f32, planks_mat.clone())));
+            } else {
+                // Postes y barandales
+                if z % 3 == 0 {
+                    objects.push(Box::new(unit_cube(x as f32, y_bridge + 1.0, z as f32, wood_mat.clone())));
+                }
+                objects.push(Box::new(unit_cube(x as f32, y_bridge + 0.5, z as f32, planks_mat.clone())));
+                
+                // Pilares de soporte profundos cada 6 bloques
+                if z % 6 == 0 {
+                    for y in -25..=(y_bridge as i32) {
+                        objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, wood_mat.clone())));
+                    }
+                }
+            }
+        }
+    }
+
+    add_lake(&mut objects, &water_mat);
+    add_cave(&mut objects, &stone_mat, &diamond_ore_mat, &lava_mat, seed);
+    let _white_concrete = Material::new(Color::new(245, 245, 250), 5.0, [0.8, 0.2, 0.0, 0.0]);
+    let _pool_water = Material::new(Color::new(100, 180, 255), 100.0, [0.1, 0.4, 0.1, 0.8]).with_refractive_index(1.33);
+
+    add_lodge(
+        &mut objects,
+        texture_atlas,
+        &stone_mat,
+        &planks_mat,
+        &wood_mat,
+        &wood_top,
+        &glass_mat,
+        &lamp_mat,
+    );
+
+    // Plataforma (Altar) para el portal
+    let stone_brick = tex_mat(texture_atlas, 4.0, 15.0);
+    let glowstone = tex_mat_from_top(texture_atlas, 9.0, 6.0).with_emission(true);
+    add_portal_structure(&mut objects, -1, -65, &stone_brick, &glowstone);
+
+    // El portal mira hacia el frente (+Z), sobre la plataforma
+    add_portal(
+        &mut objects,
+        -1, // origin_x
+        2,  // origin_y
+        -65, // origin_z
+        &obsidian_mat(texture_atlas),
+        &portal_mat(texture_atlas),
+    );
+
+    // Generación de un Mini Bosque denso para llenar la isla
+    for x in -35..=35 {
+        for z in -35..=35 {
+            // Frecuencia de aparición de árboles usando ruido (0.97 = ~3% de probabilidad)
+            if seeded_noise(seed ^ 0xABCD, x, z) > 0.97 {
+                // Verificar que esté dentro de la isla (para árboles usamos is_small=false asumiendo isla principal)
+                if !is_inside_island(x, z, RADIUS as f32, seed, false) { continue; }
+                // Evitar el agua
+                if is_lake(x, z) { continue; }
+                // Evitar la entrada superior de la cueva (alrededor de x=8, z=20)
+                if (x - 8).abs() <= 5 && (z - 20).abs() <= 5 { continue; }
+                // Evitar puente (-2..2, -54..-34)
+                if x >= -4 && x <= 4 && z >= -54 && z <= -34 { continue; }
+                // Evitar colisiones con la cabaña gigante (cx=25, cz=15, radio ~16)
+                if x >= 6 && x <= 45 && z >= -4 && z <= 35 { continue; }
+                
+                // Altura aleatoria para cada árbol (entre 4 y 6)
+                let height = 4 + (seeded_noise(seed ^ 0x1234, x, z) * 3.0) as i32;
+                add_tree(&mut objects, x, z, height, &wood_mat, &wood_top, &leaves_mat);
+            }
+        }
+    }
+
+    objects
+}
+
+/// Segundo mundo: un Bosque Carmesí del Nether independiente de la isla.
+/// Comparte la seed para que sus variaciones también sean reproducibles.
+pub fn build_nether_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn RayIntersect>> {
+    let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
+    let netherrack = tex_mat_from_top(texture_atlas, 7.0, 6.0);
+    let soul_sand = tex_mat_from_top(texture_atlas, 8.0, 6.0);
+    let glowstone = tex_mat_from_top(texture_atlas, 9.0, 6.0).with_emission(true);
+    let lava = tex_mat(texture_atlas, 15.0, 0.0).with_emission(true);
+    let quartz_ore = tex_mat_from_top(texture_atlas, 6.0, 6.0); // Mineral de cuarzo
+    let obsidian = obsidian_mat(texture_atlas); // Para la fortaleza
+
+    // 1. Generación orgánica de la isla base
+    for x in -22..=22 {
+        for z in -22..=22 {
+            let base_radius = 18.0 + (x as f32 * 0.4).sin() * 3.0 + (z as f32 * 0.3).cos() * 4.0;
+            let dist = ((x*x + z*z) as f32).sqrt();
+            
+            if dist <= base_radius {
+                let depth = -20 - (seeded_noise(seed ^ 0x666, x, z) * 10.0) as i32;
+                
+                for y in depth..=0 {
+                    // Tapering (estrechamiento hacia abajo)
+                    let max_radius_at_y = base_radius + (y as f32 * 0.7);
+                    if dist > max_radius_at_y { continue; }
+                    
+                    // Lago de lava en el centro
+                    if y >= -2 && y <= 0 && dist < 10.0 {
+                        objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, lava.clone())));
+                        continue;
+                    }
+                    
+                    let material = if y == 0 {
+                        if seeded_noise(seed ^ 0x111, x, z) > 0.5 { soul_sand.clone() } else { netherrack.clone() }
+                    } else {
+                        if seeded_noise(seed ^ 0x222, x, y ^ z) > 0.95 {
+                            quartz_ore.clone()
+                        } else {
+                            netherrack.clone()
+                        }
+                    };
+                    
+                    objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, material)));
+                }
+                
+                // Estalagmitas y estructuras naturales
+                if dist > 10.0 && seeded_noise(seed ^ 0x444, x, z) > 0.96 {
+                    let height = 2 + (seeded_noise(seed ^ 0x555, x, z) * 5.0) as i32;
+                    for step in 1..=height {
+                        objects.push(Box::new(unit_cube(x as f32, step as f32, z as f32, netherrack.clone())));
+                    }
+                    if seeded_noise(seed, x, z) > 0.5 {
+                        objects.push(Box::new(unit_cube(x as f32, height as f32 + 1.0, z as f32, glowstone.clone())));
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Puente de Fortaleza en ruinas cruzando el lago de lava
+    for z in -15..=15 {
+        if seeded_noise(seed ^ 0x777, 0, z) > 0.2 { // Ruinas (agujeros en el puente)
+            objects.push(Box::new(unit_cube(-1.0, 1.0, z as f32, obsidian.clone())));
+            objects.push(Box::new(unit_cube(0.0, 1.0, z as f32, obsidian.clone())));
+            objects.push(Box::new(unit_cube(1.0, 1.0, z as f32, obsidian.clone())));
+            
+            // Pilares de la fortaleza
+            if z % 5 == 0 {
+                objects.push(Box::new(unit_cube(-1.0, 2.0, z as f32, obsidian.clone())));
+                objects.push(Box::new(unit_cube(1.0, 2.0, z as f32, obsidian.clone())));
+                objects.push(Box::new(unit_cube(-1.0, 3.0, z as f32, glowstone.clone())));
+                objects.push(Box::new(unit_cube(1.0, 3.0, z as f32, glowstone.clone())));
+                
+                // Soportes que bajan hasta la lava
+                for y in -2..=0 {
+                    objects.push(Box::new(unit_cube(-1.0, y as f32, z as f32, obsidian.clone())));
+                    objects.push(Box::new(unit_cube(1.0, y as f32, z as f32, obsidian.clone())));
+                }
+            }
+        }
+    }
+
+    // 3. Portal de regreso, al final del puente
+    add_portal(
+        &mut objects,
+        -2, // origin_x (el puente va de -1 a 1, así que centrado)
+        2,  // origin_y
+        15, // origin_z (al final del puente en +Z)
+        &obsidian.clone(),
+        &portal_mat(texture_atlas),
+    );
+    
+    objects
+}
+
+fn is_lake(x: i32, z: i32) -> bool {
+    // Lago gigante movido a la saliente izquierda (-X)
+    let dx = x as f32 - (-25.0);
+    let dz = z as f32 - 15.0;
+    
+    let angle = dz.atan2(dx);
+    let dist = (dx * dx + dz * dz).sqrt();
+    
+    // Deformar el radio con ondas para darle una forma muy orgánica y natural
+    let wave = (angle * 3.0).sin() * 3.0 + (angle * 5.0).cos() * 2.0;
+    let irregular_radius = 12.0 + wave;
+    
+    dist < irregular_radius
+}
+
+fn unit_cube(x: f32, y: f32, z: f32, material: Material) -> Cube {
+    Cube::new(Vec3::new(x - 0.5, y - 0.5, z - 0.5), Vec3::new(x + 0.5, y + 0.5, z + 0.5), material)
+}
+
+fn add_island_surface(
+    objects: &mut Vec<Box<dyn RayIntersect>>,
+    center_x: i32,
+    center_z: i32,
+    surface_radius: i32,
+    is_small: bool,
+    grass_side: &Material,
+    grass_top: &Material,
+    dirt_mat: &Material,
+    seed: u64,
+) {
+    for local_x in -(surface_radius+8)..=(surface_radius+8) {
+        for local_z in -(surface_radius+8)..=(surface_radius+8) {
+            let x = center_x + local_x;
+            let z = center_z + local_z;
+            
+            if !is_inside_island(local_x, local_z, surface_radius as f32, seed, is_small) || is_lake(x, z) || is_cave_void(x, 0, z) {
                 continue;
             }
 
@@ -94,150 +313,120 @@ pub fn build_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn Ray
             objects.push(Box::new(block));
         }
     }
-
-    // Volumen de la isla: cada posición se instancia como un bloque individual.
-    // La forma se estrecha hacia abajo y deja libre la abertura de la cueva.
-    add_voxel_island(&mut objects, RADIUS, &dirt_mat, &stone_mat, seed);
-
-    add_lake(&mut objects, &water_mat);
-    add_cave(&mut objects, &stone_mat, &diamond_ore_mat, &gold_mat, &lava_mat, seed);
-    add_cabin(
-        &mut objects,
-        texture_atlas,
-        &planks_mat,
-        &wood_mat,
-        &wood_top,
-        &glass_mat,
-    );
-
-    // El portal mira hacia el frente (+Z), por lo que se reconoce al iniciar.
-    add_portal(
-        &mut objects,
-        6,
-        4,
-        &obsidian_mat(texture_atlas),
-        &portal_mat(texture_atlas),
-    );
-
-    add_tree(&mut objects, -1, -6, 4, &wood_mat, &wood_top, &leaves_mat);
-    add_tree(&mut objects, 8, -5, 5, &wood_mat, &wood_top, &leaves_mat);
-    add_tree(&mut objects, -10, 4, 4 + (seeded_noise(seed, -10, 4) > 0.5) as i32, &wood_mat, &wood_top, &leaves_mat);
-    add_tree(&mut objects, 1, 9, 4 + (seeded_noise(seed, 1, 9) > 0.55) as i32, &wood_mat, &wood_top, &leaves_mat);
-
-    objects
-}
-
-/// Segundo mundo: un Bosque Carmesí del Nether independiente de la isla.
-/// Comparte la seed para que sus variaciones también sean reproducibles.
-pub fn build_nether_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn RayIntersect>> {
-    let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
-    // Todas las superficies del Nether vienen del atlas existente.
-    let netherrack = tex_mat_from_top(texture_atlas, 7.0, 6.0);
-    let soul_sand = tex_mat_from_top(texture_atlas, 8.0, 6.0);
-    let glowstone = tex_mat_from_top(texture_atlas, 9.0, 6.0).with_emission(true);
-    let lava = tex_mat(texture_atlas, 15.0, 0.0).with_emission(true);
-
-    const RADIUS: i32 = 12;
-    for x in -RADIUS..=RADIUS {
-        for z in -RADIUS..=RADIUS {
-            let distance = ((x * x + z * z) as f32).sqrt();
-            if distance > RADIUS as f32 - 0.25 + seeded_noise(seed ^ 0x4E45_5448_4552, x, z) * 0.8 {
-                continue;
-            }
-            let material = if z < -4 || x < -7 {
-                soul_sand.clone()
-            } else {
-                netherrack.clone()
-            };
-            objects.push(Box::new(unit_cube(x as f32, 0.0, z as f32, material)));
-        }
-    }
-
-    // Núcleo flotante y desniveles: sólo netherrack y soul sand del atlas.
-    add_box(&mut objects, Vec3::new(-10.5, -3.0, -10.5), Vec3::new(10.5, -0.5, 10.5), netherrack.clone());
-    add_box(&mut objects, Vec3::new(-7.5, -5.5, -7.5), Vec3::new(7.5, -3.0, 7.5), soul_sand.clone());
-    add_box(&mut objects, Vec3::new(-4.5, -7.0, -4.5), Vec3::new(4.5, -5.5, 4.5), netherrack.clone());
-
-    for &(x, z, height) in &[(-9, -2, 5), (-7, 5, 3), (7, 5, 5), (9, -1, 4), (3, -8, 3)] {
-        for y in 1..=height {
-            let material = if y == height { soul_sand.clone() } else { netherrack.clone() };
-            objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, material)));
-        }
-    }
-
-    // Lagos y cascadas de lava que iluminan el nuevo bioma.
-    for x in 3..=7 {
-        for z in -2..=2 {
-            add_box(&mut objects, Vec3::new(x as f32 - 0.5, -0.48, z as f32 - 0.5), Vec3::new(x as f32 + 0.5, 0.1, z as f32 + 0.5), lava.clone());
-        }
-    }
-    for y in 1..=5 {
-        objects.push(Box::new(unit_cube(8.0, y as f32, -3.0, lava.clone())));
-    }
-
-    add_nether_fungus(&mut objects, -6, -5, 5, &netherrack, &soul_sand);
-    add_nether_fungus(&mut objects, -3, -8, 4, &netherrack, &soul_sand);
-    add_nether_fungus(&mut objects, 2, -7, 5, &netherrack, &soul_sand);
-    add_nether_fungus(&mut objects, -9, 3, 4, &netherrack, &soul_sand);
-
-    // Racimos de glowstone para contraste y una luz cálida superior.
-    for &(x, y, z) in &[(-3, 7, -1), (-2, 7, -1), (-3, 6, -1), (4, 8, -5), (4, 7, -5)] {
-        objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, glowstone.clone())));
-    }
-
-    // Portal de regreso, orientado al frente para que sea visible al aparecer.
-    add_portal(
-        &mut objects,
-        -2,
-        4,
-        &obsidian_mat(texture_atlas),
-        &portal_mat(texture_atlas),
-    );
-    objects
-}
-
-fn is_lake(x: i32, z: i32) -> bool {
-    (3..=7).contains(&x) && (-5..=-1).contains(&z) && !((x == 3 || x == 7) && (z == -5 || z == -1))
-}
-
-fn unit_cube(x: f32, y: f32, z: f32, material: Material) -> Cube {
-    Cube::new(Vec3::new(x - 0.5, y - 0.5, z - 0.5), Vec3::new(x + 0.5, y + 0.5, z + 0.5), material)
 }
 
 fn add_voxel_island(
     objects: &mut Vec<Box<dyn RayIntersect>>,
+    center_x: i32,
+    center_z: i32,
     surface_radius: i32,
+    is_small: bool,
     dirt: &Material,
     stone: &Material,
     seed: u64,
 ) {
-    for y in -7..=-1 {
-        let radius = match y {
-            -1 => surface_radius - 1,
-            -2 => surface_radius - 2,
-            -3 => surface_radius - 3,
-            -4 => surface_radius - 4,
-            -5 => surface_radius - 6,
-            -6 => surface_radius - 8,
-            _ => surface_radius - 10,
+    // Aumentar mucho la profundidad de la isla
+    for y in -40..=-1 {
+        // Un decaimiento de radio lento para que la isla sea gigante y ancha
+        let radius_drop = match y {
+            -4..=-1 => -y / 2,
+            -15..=-5 => (-y as f32 * 0.4) as i32,
+            -30..=-16 => (-y as f32 * 0.6) as i32,
+            -40..=-31 => (-y as f32 * 0.8) as i32,
+            _ => 20,
         };
+        let radius = surface_radius - radius_drop;
+        if radius <= 0 { continue; }
 
-        for x in -radius..=radius {
-            for z in -radius..=radius {
-                let distance = ((x * x + z * z) as f32).sqrt();
-                let edge_noise = seeded_noise(seed ^ 0x1A1A_0001, x, z) * 0.45;
-                if distance > radius as f32 + edge_noise || is_cave_void(x, y, z) {
+        for local_x in -(radius+8)..=(radius+8) {
+            for local_z in -(radius+8)..=(radius+8) {
+                let x = center_x + local_x;
+                let z = center_z + local_z;
+                
+                if !is_inside_island(local_x, local_z, radius as f32, seed, is_small) || is_cave_void(x, y, z) {
                     continue;
                 }
-                let material = if y >= -2 { dirt.clone() } else { stone.clone() };
+                
+                if is_lake(x, z) {
+                    let lake_depth = 3;
+                    if y >= -lake_depth {
+                        continue;
+                    }
+                }
+                
+                let material = if y >= -4 { dirt.clone() } else { stone.clone() };
                 objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, material)));
             }
         }
     }
 }
 
+fn is_inside_island(x: i32, z: i32, base_radius: f32, seed: u64, is_small: bool) -> bool {
+    let angle = (z as f32).atan2(x as f32);
+    
+    // Ondas y ruido para la costa
+    let noise = seeded_noise(seed ^ 0x1A1A, x, z) * 2.5;
+    let waves = if is_small {
+        // La isla pequeña es mucho más redonda
+        (angle * 3.0).sin() * 1.5 
+    } else {
+        // La isla grande tiene bahías y penínsulas agresivas
+        (angle * 3.0).sin() * 6.0 + (angle * 5.0).cos() * 3.0
+    };
+    
+    let irregular_radius = base_radius + noise + waves;
+    let dist = ((x * x + z * z) as f32).sqrt();
+    
+    dist <= irregular_radius
+}
+
 fn is_cave_void(x: i32, y: i32, z: i32) -> bool {
-    (-4..=4).contains(&x) && (-4..=-1).contains(&y) && (-2..=16).contains(&z)
+    // Mega cueva en el fondo (Totalmente contenida dentro de la isla)
+    let mut in_mega_cave = false;
+    if y <= -8 && y >= -25 {
+        // Radio máximo reducido (~12) para que no rompa el fondo de la isla
+        let cave_radius = 12.0 
+            + (y as f32 * 0.5).sin() * 2.0 
+            + (x as f32 * 0.3).sin() * 3.0 
+            + (z as f32 * 0.3).cos() * 3.0;
+            
+        let dist_to_core = ((x * x + z * z) as f32).sqrt();
+        if dist_to_core <= cave_radius {
+            in_mega_cave = true;
+        }
+    }
+    
+    // Entrada superior tipo sumidero
+    // Ubicada en la parte frontal derecha (lejos del lago)
+    let entrance_cx = 8.0;
+    let entrance_cz = 20.0;
+    
+    let t = (-y as f32).clamp(0.0, 15.0) / 15.0; // Conecta a la cueva en y=-15
+    let current_cx = entrance_cx * (1.0 - t);
+    let current_cz = entrance_cz * (1.0 - t);
+    
+    let tunnel_radius = 3.5 + (y as f32 * 0.4).sin() * 1.0; 
+    let dist_to_tunnel = ((x as f32 - current_cx).powi(2) + (z as f32 - current_cz).powi(2)).sqrt();
+    let in_tunnel = y > -15 && y <= 0 && dist_to_tunnel <= tunnel_radius;
+    
+    // Ventana lateral de exhibición (Diorama View)
+    // Corta la parte frontal de la isla (+Z) para ver hacia adentro de la cueva
+    let mut in_window = false;
+    if y <= -4 && y >= -28 && z >= 5 {
+        // Tubo horizontal orgánico y enorme que va desde el centro hacia afuera
+        // Desplazado a x=5 para evitar el lago que está en x < -10
+        let window_radius = 9.0 
+            + (z as f32 * 0.25).sin() * 2.0 
+            + (x as f32 * 0.4).sin() * 1.5 
+            + (y as f32 * 0.4).cos() * 1.5;
+            
+        let dist_to_window = ((x as f32 - 5.0).powi(2) + (y as f32 + 16.0).powi(2)).sqrt();
+        if dist_to_window <= window_radius {
+            in_window = true;
+        }
+    }
+    
+    in_mega_cave || in_tunnel || in_window
 }
 
 fn add_box(objects: &mut Vec<Box<dyn RayIntersect>>, min: Vec3, max: Vec3, material: Material) {
@@ -258,112 +447,207 @@ fn add_box(objects: &mut Vec<Box<dyn RayIntersect>>, min: Vec3, max: Vec3, mater
 }
 
 fn add_lake(objects: &mut Vec<Box<dyn RayIntersect>>, water_mat: &Material) {
-    for x in 3..=7 {
-        for z in -5..=-1 {
+    // Un lago gigante en la parte frontal-izquierda de la isla (-X)
+    for x in -40..=-10 {
+        for z in 0..=30 {
             if is_lake(x, z) {
-                add_box(objects, Vec3::new(x as f32 - 0.5, -0.48, z as f32 - 0.5), Vec3::new(x as f32 + 0.5, 0.12, z as f32 + 0.5), water_mat.clone());
+                let lake_depth = 3;
+                
+                for y in -lake_depth..=0 {
+                    objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, water_mat.clone())));
+                }
             }
         }
     }
 }
 
-fn add_cave(objects: &mut Vec<Box<dyn RayIntersect>>, stone: &Material, diamond: &Material, gold: &Material, lava: &Material, seed: u64) {
-    // Pared del fondo y laterales de una cueva abierta hacia +Z.
-    for y in -4..=0 {
-        for x in -4..=4 {
-            let material = if y < -1 && seeded_noise(seed, x, y) > 0.72 {
-                diamond.clone()
-            } else if y < -2 && seeded_noise(seed ^ 0x9E37_79B9, x, y) > 0.82 {
-                gold.clone()
-            } else {
-                stone.clone()
-            };
-            objects.push(Box::new(unit_cube(x as f32, y as f32, -2.0, material)));
-        }
-    }
-
-    for z in -1..=5 {
-        for y in -4..=0 {
-            objects.push(Box::new(unit_cube(-4.0, y as f32, z as f32, stone.clone())));
-            objects.push(Box::new(unit_cube(4.0, y as f32, z as f32, stone.clone())));
-        }
-    }
-
-    // Vetas garantizadas y visibles desde la entrada, independientemente de la seed.
-    for (x, y) in [(-2, -2), (-1, -3), (1, -2), (2, -3)] {
-        objects.push(Box::new(unit_cube(x as f32, y as f32, -1.48, diamond.clone())));
-    }
-    objects.push(Box::new(unit_cube(3.0, -3.0, -1.48, gold.clone())));
-
-    for x in -2..=2 {
-        for z in 0..=3 {
-            objects.push(Box::new(unit_cube(x as f32, -4.0, z as f32, lava.clone())));
+fn add_cave(
+    objects: &mut Vec<Box<dyn RayIntersect>>,
+    stone_mat: &Material,
+    diamond_mat: &Material,
+    lava_mat: &Material,
+    seed: u64,
+) {
+    // Generación de decoraciones dentro del vacío de la mega cueva
+    for y in -25..=-8 {
+        for x in -20..=20 {
+            for z in -20..=30 {
+                // Solo nos interesan bloques que son void (para poner cosas DENTRO de la cueva)
+                if !is_cave_void(x, y, z) { 
+                    // Si es pared de piedra, tal vez reemplacemos con diamante
+                    if is_cave_void(x+1, y, z) || is_cave_void(x-1, y, z) || is_cave_void(x, y, z+1) || is_cave_void(x, y, z-1) {
+                        if seeded_noise(seed ^ 0x9999, x, y * 10 + z) > 0.98 {
+                            objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, diamond_mat.clone())));
+                        }
+                    }
+                    continue; 
+                }
+                
+                // Lago de lava ardiente en lo más profundo (evitando la ventana en z>10)
+                if y <= -23 && z < 10 {
+                    objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, lava_mat.clone())));
+                    continue;
+                }
+                
+                // Estalactitas (techo) y estalagmitas (suelo)
+                let is_ceiling = !is_cave_void(x, y + 1, z);
+                let is_floor = !is_cave_void(x, y - 1, z);
+                
+                if is_ceiling && seeded_noise(seed ^ 0xCAFE, x, z) > 0.96 {
+                    // Estalactita cayendo del techo
+                    let height = 2 + (seeded_noise(seed, x, z) * 3.0) as i32;
+                    for step in 0..height {
+                        let py = y - step;
+                        if py > -23 && is_cave_void(x, py, z) {
+                            objects.push(Box::new(unit_cube(x as f32, py as f32, z as f32, stone_mat.clone())));
+                        }
+                    }
+                } else if is_floor && seeded_noise(seed ^ 0xBEEF, x, z) > 0.97 {
+                    // Estalagmita subiendo del suelo
+                    let height = 1 + (seeded_noise(seed, z, x) * 2.0) as i32;
+                    for step in 0..height {
+                        let py = y + step;
+                        if py > -23 && is_cave_void(x, py, z) {
+                            objects.push(Box::new(unit_cube(x as f32, py as f32, z as f32, stone_mat.clone())));
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
-fn add_cabin(
+fn add_lodge(
     objects: &mut Vec<Box<dyn RayIntersect>>,
     texture_atlas: &Arc<Texture>,
+    _stone: &Material,
     planks: &Material,
     wood: &Material,
     wood_top: &Material,
     glass: &Material,
+    lamp: &Material,
 ) {
-    // Cabaña de 7x7 al oeste del lago: suelo, estructura, ventanas y techo.
-    for x in -10..=-4 {
-        for z in -4..=2 {
-            objects.push(Box::new(unit_cube(x as f32, 1.0, z as f32, planks.clone())));
-        }
-    }
-
-    for &(x, z) in &[(-10, -4), (-10, 2), (-4, -4), (-4, 2)] {
-        for y in 2..=5 {
-            let pillar = unit_cube(x as f32, y as f32, z as f32, wood.clone())
-                .with_top_material(wood_top.clone())
-                .with_bottom_material(wood_top.clone());
-            objects.push(Box::new(pillar));
-        }
-    }
-
-    for y in 2..=4 {
-        for x in -9..=-5 {
-            if x == -7 && y <= 3 { continue; } // puerta en +Z
-            objects.push(Box::new(unit_cube(x as f32, y as f32, 2.0, planks.clone())));
-            objects.push(Box::new(unit_cube(x as f32, y as f32, -4.0, planks.clone())));
-        }
-        for z in -3..=1 {
-            let side_material = if y == 3 && (z == -2 || z == 0) { glass.clone() } else { planks.clone() };
-            objects.push(Box::new(unit_cube(-10.0, y as f32, z as f32, side_material.clone())));
-            objects.push(Box::new(unit_cube(-4.0, y as f32, z as f32, side_material)));
-        }
-    }
-
-    // Techo escalonado, construido igual que el resto: un bloque por posición.
-    for x in -11..=-3 {
-        for z in -5..=3 {
-            if x == -11 || x == -3 || z == -5 || z == 3 {
-                objects.push(Box::new(unit_cube(x as f32, 5.0, z as f32, planks.clone())));
+    // ¡La Gran Cabaña "Cozy" (Forma de Cruz Gigante)!
+    // Moviendo a la saliente derecha (+X)
+    let cx = 25;
+    let cz = 15;
+    
+    // --- PISO Y PORCHE ---
+    for x in (cx - 16)..=(cx + 16) {
+        for z in (cz - 16)..=(cz + 16) {
+            let dist_x = (x - cx as i32).abs();
+            let dist_z = (z - cz as i32).abs();
+            
+            let inside_walls = (dist_x <= 12 && dist_z <= 6) || (dist_x <= 6 && dist_z <= 12);
+            let inside_deck = (dist_x <= 15 && dist_z <= 9) || (dist_x <= 9 && dist_z <= 15);
+            
+            if inside_walls {
+                // Piso interior de madera
+                objects.push(Box::new(unit_cube(x as f32, 1.0, z as f32, planks.clone())));
+            } else if inside_deck {
+                // Deck exterior (porche)
+                objects.push(Box::new(unit_cube(x as f32, 1.0, z as f32, wood.clone())));
+                
+                // Barandales del porche (postes de madera)
+                let is_deck_edge = (dist_x == 15 && dist_z <= 9) || (dist_z == 15 && dist_x <= 9) ||
+                                   (dist_x == 9 && dist_z >= 9 && dist_z <= 15) || 
+                                   (dist_z == 9 && dist_x >= 9 && dist_x <= 15);
+                
+                // Entradas apuntando hacia el centro de la isla (-X y -Z)
+                let is_entrance = (x == cx - 15 && z >= cz - 2 && z <= cz + 2) || 
+                                  (z == cz - 15 && x >= cx - 2 && x <= cx + 2); 
+                
+                if is_deck_edge && !is_entrance && (x % 2 == 0 || z % 2 == 0) {
+                    objects.push(Box::new(unit_cube(x as f32, 2.0, z as f32, planks.clone())));
+                }
+                
+                // Si el deck está flotando sobre el vacío (fuera de la isla), agregar soportes hacia abajo
+                if is_deck_edge && (x % 4 == 0 && z % 4 == 0) {
+                    // Pilares largos de soporte para el balcón suspendido
+                    for y in -10..=0 {
+                        objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, wood.clone())));
+                    }
+                }
             }
         }
     }
-    for x in -10..=-4 {
-        for z in -4..=2 {
-            objects.push(Box::new(unit_cube(x as f32, 6.0, z as f32, planks.clone())));
+    
+    // --- PAREDES, VENTANAS Y TECHO ---
+    for x in (cx - 15)..=(cx + 15) {
+        for z in (cz - 15)..=(cz + 15) {
+            let dist_x = (x - cx as i32).abs();
+            let dist_z = (z - cz as i32).abs();
+            
+            let is_main_roof = dist_x <= 13 && dist_z <= 7;
+            let is_cross_roof = dist_x <= 7 && dist_z <= 13;
+            
+            if !is_main_roof && !is_cross_roof {
+                continue; 
+            }
+            
+            // Altura del techo en este (x, z)
+            let mut y_roof = 0;
+            if is_main_roof { y_roof = y_roof.max(4 + (7 - dist_z) * 2); }
+            if is_cross_roof { y_roof = y_roof.max(4 + (7 - dist_x) * 2); }
+            
+            // Colocar el techo
+            let roof_mat = tex_mat(texture_atlas, 4.0, 15.0); // Ladrillos de piedra/teja
+            objects.push(Box::new(unit_cube(x as f32, y_roof as f32, z as f32, roof_mat.clone())));
+            // Para que el techo sea grueso, colocamos otro bloque debajo
+            if y_roof > 4 {
+                objects.push(Box::new(unit_cube(x as f32, (y_roof - 1) as f32, z as f32, wood.clone())));
+            }
+            
+            // Colocar paredes
+            let is_wall_x = dist_x == 12 && dist_z <= 6;
+            let is_wall_z = dist_z == 12 && dist_x <= 6;
+            let is_inner_corner = dist_x == 6 && dist_z == 6;
+            
+            if is_wall_x || is_wall_z || is_inner_corner {
+                let is_corner = (dist_x == 12 && dist_z == 6) || (dist_z == 12 && dist_x == 6) || is_inner_corner;
+                let is_window = (dist_x == 12 && dist_z <= 3) || (dist_z == 12 && dist_x <= 3);
+                
+                for y in 2..=(y_roof - 2) { 
+                    // Chimenea gigante corta la pared en la parte trasera
+                    if dist_x <= 3 && z == cz - 12 { continue; }
+                    // Puerta principal
+                    if dist_x <= 2 && z == cz + 6 && y <= 4 { continue; }
+                    
+                    if is_corner {
+                        let pillar = unit_cube(x as f32, y as f32, z as f32, wood.clone())
+                            .with_top_material(wood_top.clone())
+                            .with_bottom_material(wood_top.clone());
+                        objects.push(Box::new(pillar));
+                    } else if is_window && y >= 3 && y <= 9 {
+                        objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, glass.clone())));
+                    } else {
+                        objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, planks.clone())));
+                    }
+                }
+            }
         }
     }
-
-    // Porche frente a la entrada, cumbrera y chimenea: también son voxeles.
-    for x in -8..=-6 {
-        objects.push(Box::new(unit_cube(x as f32, 1.0, 3.0, planks.clone())));
-        objects.push(Box::new(unit_cube(x as f32, 7.0, -1.0, wood.clone())));
+    
+    // --- CHIMENEA GIGANTE DE PIEDRA ---
+    // En la parte trasera: z = cz - 12. Centro en x = cx.
+    let chimney_stone = tex_mat(texture_atlas, 1.0, 15.0); // Cobblestone
+    for y in 1..=24 {
+        for x in (cx - 3)..=(cx + 3) {
+            for z in (cz - 14)..=(cz - 11) {
+                let is_outer = x == cx - 3 || x == cx + 3 || z == cz - 14 || z == cz - 11;
+                if is_outer {
+                    // Estrechar la chimenea en la cima
+                    if y > 18 && (x == cx - 3 || x == cx + 3) { continue; }
+                    objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, chimney_stone.clone())));
+                } else if y == 2 {
+                    // Fuego (lava/lámpara) en la base
+                    objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, lamp.clone())));
+                }
+            }
+        }
     }
-    let chimney_stone = tex_mat(texture_atlas, 1.0, 15.0);
-    for y in 6..=8 {
-        objects.push(Box::new(unit_cube(-9.0, y as f32, -3.0, chimney_stone.clone())));
-    }
-
-    // Interior: se reactivan los bloques ya disponibles en el atlas.
+    
+    // --- INTERIOR COZY ---
     let crafting_top = tex_mat(texture_atlas, 11.0, 13.0);
     let crafting_front = tex_mat(texture_atlas, 11.0, 12.0);
     let crafting_side = tex_mat(texture_atlas, 12.0, 12.0);
@@ -376,45 +660,61 @@ fn add_cabin(
     let bed_head_back = tex_mat(texture_atlas, 8.0, 6.0);
     let bed_foot_side = tex_mat(texture_atlas, 6.0, 6.0);
     let bed_head_side = tex_mat(texture_atlas, 7.0, 6.0);
+    
+    // Aquí actualizamos la textura de libreros usando tex_mat_from_top para manejar la inversión en Y
+    let bookshelf = tex_mat_from_top(texture_atlas, 3.0, 2.0);
+    
+    // Mesa de crafteo y hornos cerca de la chimenea
+    objects.push(Box::new(unit_cube((cx + 2) as f32, 2.0, (cz - 9) as f32, crafting_side.clone())
+        .with_top_material(crafting_top).with_front_material(crafting_front.clone())
+        .with_back_material(crafting_front).with_left_material(crafting_side.clone())
+        .with_right_material(crafting_side)));
+        
+    objects.push(Box::new(unit_cube(cx as f32, 2.0, (cz - 10) as f32, furnace_side.clone())
+        .with_top_material(furnace_top.clone()).with_front_material(furnace_front.clone())
+        .with_back_material(furnace_front.clone()).with_left_material(furnace_side.clone())
+        .with_right_material(furnace_side.clone())));
+        
+    objects.push(Box::new(unit_cube((cx - 1) as f32, 2.0, (cz - 10) as f32, furnace_side.clone())
+        .with_top_material(furnace_top).with_front_material(furnace_front.clone())
+        .with_back_material(furnace_front).with_left_material(furnace_side.clone())
+        .with_right_material(furnace_side)));
 
-    let crafting_table = unit_cube(-9.0, 2.0, -3.0, crafting_side.clone())
-        .with_top_material(crafting_top)
-        .with_front_material(crafting_front.clone())
-        .with_back_material(crafting_front)
-        .with_left_material(crafting_side.clone())
-        .with_right_material(crafting_side);
-    objects.push(Box::new(crafting_table));
-
-    let furnace = unit_cube(-5.0, 2.0, -3.0, furnace_side.clone())
-        .with_top_material(furnace_top)
-        .with_front_material(furnace_front.clone())
-        .with_back_material(furnace_front)
-        .with_left_material(furnace_side.clone())
-        .with_right_material(furnace_side);
-    objects.push(Box::new(furnace));
-
-    let bed_foot = unit_cube(-7.0, 2.0, 0.0, bed_foot_side.clone())
-        .with_top_material(bed_foot_top)
-        .with_front_material(bed_foot_front.clone())
-        .with_back_material(bed_foot_front)
-        .with_left_material(bed_foot_side.clone())
-        .with_right_material(bed_foot_side);
-    let bed_head = unit_cube(-7.0, 2.0, -1.0, bed_head_side.clone())
-        .with_top_material(bed_head_top)
-        .with_back_material(bed_head_back)
-        .with_left_material(bed_head_side.clone())
-        .with_right_material(bed_head_side);
-    objects.push(Box::new(bed_foot));
-    objects.push(Box::new(bed_head));
+    // Camas en el ala este (-X)
+    for z in (cz - 1)..=(cz + 1) {
+        objects.push(Box::new(unit_cube((cx - 10) as f32, 2.0, z as f32, bed_foot_side.clone())
+            .with_top_material(bed_foot_top.clone()).with_front_material(bed_foot_front.clone())
+            .with_back_material(bed_foot_front.clone()).with_left_material(bed_foot_side.clone())
+            .with_right_material(bed_foot_side.clone())));
+        objects.push(Box::new(unit_cube((cx - 11) as f32, 2.0, z as f32, bed_head_side.clone())
+            .with_top_material(bed_head_top.clone()).with_back_material(bed_head_back.clone())
+            .with_left_material(bed_head_side.clone()).with_right_material(bed_head_side.clone())));
+    }
+    
+    // Grandes paredes de libreros
+    for y in 2..=8 {
+        objects.push(Box::new(unit_cube((cx + 4) as f32, y as f32, (cz + 2) as f32, bookshelf.clone())));
+        objects.push(Box::new(unit_cube((cx - 4) as f32, y as f32, (cz + 2) as f32, bookshelf.clone())));
+        objects.push(Box::new(unit_cube((cx + 4) as f32, y as f32, (cz - 2) as f32, bookshelf.clone())));
+        objects.push(Box::new(unit_cube((cx - 4) as f32, y as f32, (cz - 2) as f32, bookshelf.clone())));
+    }
+    
+    // Iluminación interior (Gran Candelabro)
+    objects.push(Box::new(unit_cube(cx as f32, 14.0, cz as f32, wood.clone())));
+    objects.push(Box::new(unit_cube(cx as f32, 13.0, cz as f32, lamp.clone())));
+    objects.push(Box::new(unit_cube((cx + 1) as f32, 13.0, cz as f32, lamp.clone())));
+    objects.push(Box::new(unit_cube((cx - 1) as f32, 13.0, cz as f32, lamp.clone())));
+    objects.push(Box::new(unit_cube(cx as f32, 13.0, (cz + 1) as f32, lamp.clone())));
+    objects.push(Box::new(unit_cube(cx as f32, 13.0, (cz - 1) as f32, lamp.clone())));
 }
 
-fn add_portal(objects: &mut Vec<Box<dyn RayIntersect>>, origin_x: i32, origin_z: i32, obsidian: &Material, portal: &Material) {
+fn add_portal(objects: &mut Vec<Box<dyn RayIntersect>>, origin_x: i32, origin_y: i32, origin_z: i32, obsidian: &Material, portal: &Material) {
     // Marco exterior 4x6; interior morado 2x4.
     for x in origin_x..=origin_x + 3 {
-        objects.push(Box::new(unit_cube(x as f32, 1.0, origin_z as f32, obsidian.clone())));
-        objects.push(Box::new(unit_cube(x as f32, 6.0, origin_z as f32, obsidian.clone())));
+        objects.push(Box::new(unit_cube(x as f32, origin_y as f32, origin_z as f32, obsidian.clone())));
+        objects.push(Box::new(unit_cube(x as f32, (origin_y + 5) as f32, origin_z as f32, obsidian.clone())));
     }
-    for y in 2..=5 {
+    for y in (origin_y + 1)..=(origin_y + 4) {
         objects.push(Box::new(unit_cube(origin_x as f32, y as f32, origin_z as f32, obsidian.clone())));
         objects.push(Box::new(unit_cube((origin_x + 3) as f32, y as f32, origin_z as f32, obsidian.clone())));
         for x in origin_x + 1..=origin_x + 2 {
@@ -464,6 +764,34 @@ fn add_nether_fungus(
         }
     }
     objects.push(Box::new(unit_cube(x as f32, (height + 2) as f32, z as f32, wart.clone())));
+}
+
+fn add_portal_structure(
+    objects: &mut Vec<Box<dyn RayIntersect>>,
+    cx: i32,
+    cz: i32,
+    stone_brick: &Material,
+    glowstone: &Material,
+) {
+    // La plataforma debe ser simétrica. El portal va de x=cx a x=cx+3.
+    // Damos un borde de 2 bloques a cada lado en X: de cx-2 a cx+5.
+    // Damos un borde de 3 bloques en Z: de cz-3 a cz+3.
+    for x in (cx - 2)..=(cx + 5) {
+        for z in (cz - 3)..=(cz + 3) {
+            objects.push(Box::new(unit_cube(x as f32, 1.0, z as f32, stone_brick.clone())));
+            
+            // Pilares en las esquinas
+            let is_corner = (x == cx - 2 || x == cx + 5) && (z == cz - 3 || z == cz + 3);
+            if is_corner {
+                // Pilar de altura 3 (niveles 2, 3, 4)
+                objects.push(Box::new(unit_cube(x as f32, 2.0, z as f32, stone_brick.clone())));
+                objects.push(Box::new(unit_cube(x as f32, 3.0, z as f32, stone_brick.clone())));
+                objects.push(Box::new(unit_cube(x as f32, 4.0, z as f32, stone_brick.clone())));
+                // Glowstone en la punta (nivel 5)
+                objects.push(Box::new(unit_cube(x as f32, 5.0, z as f32, glowstone.clone())));
+            }
+        }
+    }
 }
 
 fn seeded_noise(seed: u64, x: i32, z: i32) -> f32 {
