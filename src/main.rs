@@ -409,12 +409,13 @@ fn main() {
         let portal_pos = match realm {
             Realm::Overworld => Vec3::new(0.5, 3.5, -65.0),
             Realm::Nether => Vec3::new(-0.5, 3.5, -15.0),
-            Realm::End => Vec3::new(0.0, 2.0, 0.0),
+            Realm::End => Vec3::new(10000.0, 0.0, 0.0), // Alejar el sonido para mutearlo en el End
         };
-        let in_nether = realm == Realm::Nether || realm == Realm::End;
+        let in_nether = realm == Realm::Nether;
 
         // Query pig position dynamically if in overworld, or fake it
         let pig_pos = Vec3::new(2.0, 0.5, 2.0);
+        let in_other_dimension = realm == Realm::Nether || realm == Realm::End;
         audio_manager.update_3d_audio(
             camera.eye,
             (camera.center - camera.eye).normalize(),
@@ -428,8 +429,8 @@ fn main() {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis();
-        if time_ms % 6000 < 16 && !in_nether {
-            // Roughly every 8 seconds
+        if time_ms % 3000 < 16 && !in_other_dimension {
+            // Roughly every 3 seconds
             audio_manager.play_pig_sfx();
         }
 
