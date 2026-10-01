@@ -51,8 +51,8 @@ impl RayIntersect for VoxelGrid {
 
         let closest_intersect: Option<Intersect> = None;
 
-        // Traverse up to 60 blocks distance (Render Distance)
-        for _ in 0..60 {
+        // Traverse up to 250 blocks distance (Render Distance)
+        for _ in 0..250 {
             if let Some(cube) = self.blocks.get(&current_voxel) {
                 if let Some(intersect) = cube.ray_intersect(ray_origin, ray_direction) {
                     // DDA doesn't perfectly guarantee we hit the face entering the voxel if the ray 
