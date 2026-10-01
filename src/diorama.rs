@@ -46,8 +46,10 @@ pub fn build_inventory(texture_atlas: &Arc<Texture>) -> Vec<(&'static str, Mater
         ("Piedra", stone_mat),
         ("Hojas", leaves_mat),
         ("Cristal", glass_mat),
+        ("Ladrillos", tex_mat_from_top(texture_atlas, 6.0, 3.0)),
+        ("L. Musgoso", tex_mat_from_top(texture_atlas, 4.0, 6.0)),
+        ("L. Roto", tex_mat_from_top(texture_atlas, 5.0, 6.0)),
         ("Obsidiana", obsidian_mat(texture_atlas)),
-        ("Portal", portal_mat(texture_atlas)),
     ]
 }
 
@@ -87,6 +89,19 @@ pub fn build_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn Ray
     
     // Bookshelves (standard Minecraft pos: side 3,2, top/bottom wood planks 4,0)
     let bookshelf_mat = tex_mat_from_top(texture_atlas, 3.0, 2.0);
+    
+    // End Portal Materials
+    let end_stone_mat = tex_mat_from_top(texture_atlas, 15.0, 10.0);
+    let end_frame_top = tex_mat_from_top(texture_atlas, 14.0, 9.0);
+    let end_frame_bot = tex_mat_from_top(texture_atlas, 15.0, 10.0);
+    // Custom UV for side to avoid the top 3 transparent pixels (white stripe)
+    let end_frame_side = tex_mat_from_top(texture_atlas, 15.0, 9.0)
+        .with_uv((1.0 / 16.0, 13.0 / 256.0), (15.0 / 16.0, 6.0 / 16.0));
+
+    // End Portal Inside Mat (Pitch black space with emission)
+    let end_portal_inside = tex_mat_from_top(texture_atlas, 15.0, 12.0)
+        .with_emission(true)
+        .with_portal(true);
 
     const RADIUS: i32 = 36;
     
@@ -102,6 +117,58 @@ pub fn build_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn Ray
     // --- Isla Pequeña (Encantamientos verdaderamente separada) ---
     add_island_surface(&mut objects, 10, 55, SMALL_RADIUS, true, &grass_side, &grass_top, &dirt_mat, seed ^ 0x8888);
     add_voxel_island(&mut objects, 10, 55, SMALL_RADIUS, true, &dirt_mat, &stone_mat, seed ^ 0x8888);
+    
+    // --- Stronghold Portal Room (End Portal en -X) ---
+    let stone_brick = tex_mat_from_top(texture_atlas, 6.0, 3.0);
+    let mossy_brick = tex_mat_from_top(texture_atlas, 4.0, 6.0);
+    let cracked_brick = tex_mat_from_top(texture_atlas, 5.0, 6.0);
+    
+    // Generar el cuarto de stronghold (base de 11x11)
+    for sx in -5i32..=5 {
+        for sz in -5i32..=5 {
+            let px = -55 + sx;
+            let pz = 0 + sz;
+            
+            // Elegir aleatoriamente el tipo de ladrillo
+            let rand_val = seeded_noise(seed, px, pz);
+            let brick_mat = if rand_val < 0.2 {
+                mossy_brick.clone()
+            } else if rand_val < 0.4 {
+                cracked_brick.clone()
+            } else {
+                stone_brick.clone()
+            };
+            
+            // Piso base
+            // No ponemos piso en el 3x3 central (sx de -1 a 1, sz de -1 a 1) para la lava
+            if sx > -2 && sx < 2 && sz > -2 && sz < 2 {
+                for dy in 1..=3 {
+                    objects.push(Box::new(unit_cube(px as f32, -dy as f32, pz as f32, brick_mat.clone())));
+                }
+            } else {
+                for dy in 0..=3 {
+                    objects.push(Box::new(unit_cube(px as f32, -dy as f32, pz as f32, brick_mat.clone())));
+                }
+            }
+            
+            // Paredes (altura 1 a 4)
+            if sx.abs() == 5 || sz.abs() == 5 {
+                // Dejar puerta en sx = 5 (hacia el puente colgante)
+                if sx == 5 && sz.abs() <= 1 {
+                    continue; 
+                }
+                for dy in 1..=4 {
+                    objects.push(Box::new(unit_cube(px as f32, dy as f32, pz as f32, brick_mat.clone())));
+                }
+            }
+        }
+    }
+    
+    // Escaleras y Spawner al frente (sx = 3)
+    let spawner_mat = tex_mat(texture_atlas, 1.0, 4.0); // textura de mob spawner
+    objects.push(Box::new(Cube::new(Vec3::new(-52.5, 0.5, -1.5), Vec3::new(-51.5, 1.0, -0.5), stone_brick.clone())));
+    objects.push(Box::new(Cube::new(Vec3::new(-52.5, 0.5, 0.5), Vec3::new(-51.5, 1.0, 1.5), stone_brick.clone())));
+    objects.push(Box::new(Cube::new(Vec3::new(-52.5, 0.5, -0.5), Vec3::new(-51.5, 1.0, 0.5), spawner_mat.clone())));
     
     // --- Puente Colgante Decorado ---
     for z in -53..=-35 {
@@ -226,6 +293,67 @@ pub fn build_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn Ray
         }
     }
     // (Glowstone eliminada para dejarlo al descubierto)
+    
+    // --- Puente hacia el End Portal (en -X) ---
+    for x in -43..=-35 {
+        for z in -2..=2 {
+            let drop = -((x + 39) as f32 / 5.0).powi(2) * 0.3 + 0.5;
+            let y_bridge = 1.0 - drop;
+            
+            if z >= -1 && z <= 1 {
+                objects.push(Box::new(unit_cube(x as f32, y_bridge, z as f32, planks_mat.clone())));
+            } else {
+                if x % 2 == 0 {
+                    objects.push(Box::new(unit_cube(x as f32, y_bridge + 1.0, z as f32, wood_mat.clone())));
+                }
+                objects.push(Box::new(unit_cube(x as f32, y_bridge + 0.5, z as f32, planks_mat.clone())));
+                
+                if x % 4 == 0 {
+                    for step in 1..=4 {
+                        objects.push(Box::new(unit_cube(x as f32, y_bridge - step as f32, z as f32, wood_mat.clone())));
+                    }
+                }
+            }
+        }
+    }
+    
+    // --- Zona del End Portal ---
+    let portal_cx = -55;
+    let portal_cz = 0;
+    
+    // Crear el anillo del portal de 3x3 (5x5 exterior con esquinas vacías)
+    for px in -2..=2 {
+        for pz in -2..=2 {
+            // Saltamos el interior (3x3 interior)
+            if px > -2 && px < 2 && pz > -2 && pz < 2 {
+                // Rellenamos el interior con el material del portal del End
+                // El portal del End es más delgado, lo ponemos un poco debajo del tope del frame
+                objects.push(Box::new(Cube::new(
+                    Vec3::new((portal_cx + px) as f32 - 0.5, 0.5, (portal_cz + pz) as f32 - 0.5),
+                    Vec3::new((portal_cx + px) as f32 + 0.5, 1.15, (portal_cz + pz) as f32 + 0.5),
+                    end_portal_inside.clone()
+                )));
+                // Y ponemos lava justo debajo (y = 0.0) en el 3x3
+                objects.push(Box::new(unit_cube((portal_cx + px) as f32, 0.0, (portal_cz + pz) as f32, lava_mat.clone())));
+                continue;
+            }
+            // Saltamos las esquinas (las dejamos vacías como en el juego)
+            if (px == -2 || px == 2) && (pz == -2 || pz == 2) {
+                continue;
+            }
+            
+            // Frame Block
+            // El frame del End Portal no es un cubo completo de altura, es más chaparro (aprox 13/16 de altura)
+            let frame = Cube::new(
+                Vec3::new((portal_cx + px) as f32 - 0.5, 0.5, (portal_cz + pz) as f32 - 0.5),
+                Vec3::new((portal_cx + px) as f32 + 0.5, 1.3125, (portal_cz + pz) as f32 + 0.5),
+                end_frame_side.clone()
+            )
+            .with_top_material(end_frame_top.clone())
+            .with_bottom_material(end_frame_bot.clone());
+            objects.push(Box::new(frame));
+        }
+    }
 
     // Generación de un Mini Bosque denso para llenar la isla
     for x in -35..=35 {
@@ -938,4 +1066,68 @@ fn seeded_noise(seed: u64, x: i32, z: i32) -> f32 {
     value = value.wrapping_mul(0x94D0_49BB_1331_11EB);
     value ^= value >> 31;
     (value as f64 / u64::MAX as f64) as f32
+}
+
+pub fn build_end_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn RayIntersect>> {
+    let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
+
+    let end_stone_mat = tex_mat_from_top(texture_atlas, 15.0, 10.0);
+    let obsidian = obsidian_mat(texture_atlas);
+    
+    // Isla Principal del End
+    const END_RADIUS: i32 = 45;
+    add_island_surface(&mut objects, 0, 0, END_RADIUS, false, &end_stone_mat, &end_stone_mat, &end_stone_mat, seed);
+    add_voxel_island(&mut objects, 0, 0, END_RADIUS, false, &end_stone_mat, &end_stone_mat, seed);
+    
+    // Pilares de Obsidiana en un círculo
+    let num_pillars = 8;
+    for i in 0..num_pillars {
+        let angle = (i as f32 / num_pillars as f32) * std::f32::consts::PI * 2.0;
+        let radius = 25.0;
+        let px = (angle.cos() * radius).round() as i32;
+        let pz = (angle.sin() * radius).round() as i32;
+        
+        let height = 15 + (seeded_noise(seed + i, px, pz) * 15.0) as i32;
+        
+        for y in 1..=height {
+            for x in -1..=1 {
+                for z in -1..=1 {
+                    objects.push(Box::new(unit_cube((px + x) as f32, y as f32, (pz + z) as f32, obsidian.clone())));
+                }
+            }
+        }
+        
+        // Un "cristal" simulado (Bedrock/Glowstone/Glass) arriba
+        let glass_mat = Material::new(Color::new(255, 100, 255), 50.0, [0.1, 0.4, 0.1, 0.8])
+            .with_refractive_index(1.5).with_emission(true);
+        objects.push(Box::new(unit_cube(px as f32, (height + 1) as f32, pz as f32, glass_mat)));
+    }
+    
+    // Portal de salida central (Bedrock y End Portal)
+    let bedrock = tex_mat_from_top(texture_atlas, 1.0, 1.0); // Coordenada de bedrock clásica (o piedra en su defecto)
+    let end_portal_inside = tex_mat_from_top(texture_atlas, 15.0, 12.0)
+        .with_emission(true)
+        .with_portal(true);
+        
+    for x in -2i32..=2 {
+        for z in -2i32..=2 {
+            if x.abs() == 2 || z.abs() == 2 {
+                objects.push(Box::new(unit_cube(x as f32, 1.0, z as f32, bedrock.clone())));
+            } else if x == 0 && z == 0 {
+                // Pilar central de bedrock
+                objects.push(Box::new(unit_cube(0.0, 1.0, 0.0, bedrock.clone())));
+                objects.push(Box::new(unit_cube(0.0, 2.0, 0.0, bedrock.clone())));
+                objects.push(Box::new(unit_cube(0.0, 3.0, 0.0, bedrock.clone())));
+            } else {
+                // Bloques de portal del end 
+                objects.push(Box::new(Cube::new(
+                    Vec3::new(x as f32 - 0.5, 0.5, z as f32 - 0.5),
+                    Vec3::new(x as f32 + 0.5, 1.15, z as f32 + 0.5),
+                    end_portal_inside.clone()
+                )));
+            }
+        }
+    }
+    
+    objects
 }

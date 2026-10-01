@@ -25,7 +25,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use texture::Texture;
 
-use diorama::{DEFAULT_WORLD_SEED, build_diorama, build_inventory, build_nether_diorama, tex_mat};
+use diorama::{DEFAULT_WORLD_SEED, build_diorama, build_inventory, build_nether_diorama, build_end_diorama, tex_mat};
 use pig::Pig;
 use ray_intersect::RayIntersect;
 use render::{SkyMode, render};
@@ -42,6 +42,7 @@ const ROTATION_SPEED: f32 = PI / 60.0;
 enum Realm {
     Overworld,
     Nether,
+    End,
 }
 
 fn main() {
@@ -64,6 +65,10 @@ fn main() {
     let mut nether = World::from_objects(build_nether_diorama(
         &texture_atlas,
         world_seed ^ 0x4E45_5448_4552,
+    ));
+    let mut end = World::from_objects(build_end_diorama(
+        &texture_atlas,
+        world_seed ^ 0x454E_44,
     ));
 
     // Add the Pig to the overworld
@@ -111,9 +116,11 @@ fn main() {
             Key::Key5,
             Key::Key6,
             Key::Key7,
+            Key::Key8,
+            Key::Key9,
         ];
         for (i, key) in keys.iter().enumerate() {
-            if window.is_key_pressed(*key, minifb::KeyRepeat::No) {
+            if i < inventory.len() && window.is_key_pressed(*key, minifb::KeyRepeat::No) {
                 active_block_index = i;
                 moved = true;
             }
@@ -128,10 +135,11 @@ fn main() {
             let world = match realm {
                 Realm::Overworld => &overworld,
                 Realm::Nether => &nether,
+                Realm::End => &end,
             };
 
             if let Some(intersect) = world.ray_intersect(&camera.eye, &center_ray) {
-                if intersect.distance < 10.0 {
+                if intersect.distance < 100.0 {
                     let hit_voxel = [
                         (intersect.point.x - intersect.normal.x * 0.01).round() as i32,
                         (intersect.point.y - intersect.normal.y * 0.01).round() as i32,
@@ -142,27 +150,44 @@ fn main() {
             }
         }
 
-        // La transición sólo se activa al mirar directamente la superficie morada
-        // del portal; E sobre la obsidiana no cambia de escena por accidente.
-        if window.is_key_pressed(Key::E, minifb::KeyRepeat::No)
-            && selected_block
-                .as_ref()
-                .is_some_and(|(_, hit)| hit.material.is_portal)
-        {
-            realm = match realm {
-                Realm::Overworld => {
+        // Teleport based on proximity instead of looking at the portal
+        if window.is_key_pressed(Key::E, minifb::KeyRepeat::No) {
+            let dist_to_nether_portal = (camera.eye - Vec3::new(0.5, 3.5, -65.0)).magnitude();
+            let dist_to_end_portal = (camera.eye - Vec3::new(-55.0, 1.0, 0.0)).magnitude();
+            let dist_to_nether_spawn = (camera.eye - Vec3::new(-0.5, 3.0, -14.0)).magnitude();
+            let dist_to_end_spawn = (camera.eye - Vec3::new(0.0, 4.0, -10.0)).magnitude();
+
+            let mut teleported = false;
+            
+            if realm == Realm::Overworld {
+                if dist_to_nether_portal < 25.0 {
+                    realm = Realm::Nether;
                     audio_manager.play_music("Nether");
-                    Realm::Nether
+                    teleported = true;
+                } else if dist_to_end_portal < 25.0 {
+                    realm = Realm::End;
+                    audio_manager.play_music("Nether"); // Optional end music
+                    teleported = true;
                 }
-                Realm::Nether => {
+            } else if realm == Realm::Nether {
+                if dist_to_nether_spawn < 25.0 {
+                    realm = Realm::Overworld;
                     audio_manager.play_music("Overworld");
-                    Realm::Overworld
+                    teleported = true;
                 }
-            };
-            // world dynamically selected
-            camera = spawn_camera(realm);
-            selected_block = None;
-            moved = true;
+            } else if realm == Realm::End {
+                if dist_to_end_spawn < 25.0 {
+                    realm = Realm::Overworld;
+                    audio_manager.play_music("Overworld");
+                    teleported = true;
+                }
+            }
+
+            if teleported {
+                camera = spawn_camera(realm);
+                selected_block = None;
+                moved = true;
+            }
         }
 
         if window.is_key_pressed(Key::Space, minifb::KeyRepeat::No) {
@@ -190,6 +215,7 @@ fn main() {
                 let current_world = match realm {
                     Realm::Overworld => &mut overworld,
                     Realm::Nether => &mut nether,
+                    Realm::End => &mut end,
                 };
                 let nx = new_center.x.round() as i32;
                 let ny = new_center.y.round() as i32;
@@ -204,6 +230,7 @@ fn main() {
                 let current_world = match realm {
                     Realm::Overworld => &mut overworld,
                     Realm::Nether => &mut nether,
+                    Realm::End => &mut end,
                 };
                 current_world.grid.remove(voxel[0], voxel[1], voxel[2]);
                 moved = true;
@@ -326,6 +353,20 @@ fn main() {
                 ],
                 SkyMode::Nether,
             ),
+            Realm::End => (
+                vec![
+                    // Ambient light for the End
+                    Light::new(
+                        Vec3::new(0.0, 100.0, 0.0),
+                        Color::new(180, 150, 200),
+                        0.5,
+                        1000.0,
+                    ),
+                    // Portal light in the center of the End island
+                    Light::new(Vec3::new(0.0, 2.0, 0.0), Color::new(200, 50, 255), 3.0, 40.0),
+                ],
+                SkyMode::End,
+            ),
         };
 
         let selected_voxel = selected_block.as_ref().map(|(v, _)| *v);
@@ -333,6 +374,7 @@ fn main() {
         let current_world = match realm {
             Realm::Overworld => &mut overworld,
             Realm::Nether => &mut nether,
+            Realm::End => &mut end,
         };
 
         current_world.update(1.0 / 20.0); // simple fixed timestep
@@ -359,8 +401,9 @@ fn main() {
         let portal_pos = match realm {
             Realm::Overworld => Vec3::new(0.5, 3.5, -65.0),
             Realm::Nether => Vec3::new(-0.5, 3.5, -15.0),
+            Realm::End => Vec3::new(0.0, 2.0, 0.0),
         };
-        let in_nether = realm == Realm::Nether;
+        let in_nether = realm == Realm::Nether || realm == Realm::End;
 
         // Query pig position dynamically if in overworld, or fake it
         let pig_pos = Vec3::new(2.0, 0.5, 2.0);
@@ -400,6 +443,11 @@ fn spawn_camera(realm: Realm) -> Camera {
         Realm::Nether => Camera::new(
             Vec3::new(-0.5, 3.0, -14.0), // Spawn at the portal at z = -14
             Vec3::new(-0.5, 3.0, 15.0),  // Look towards the fortress at z = 15
+            Vec3::new(0.0, 1.0, 0.0),
+        ),
+        Realm::End => Camera::new(
+            Vec3::new(0.0, 4.0, -10.0), // Spawn at the portal
+            Vec3::new(0.0, 4.0, 10.0),  // Look towards the island
             Vec3::new(0.0, 1.0, 0.0),
         ),
     }

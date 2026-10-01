@@ -17,6 +17,7 @@ pub const MAX_DEPTH: u32 = 3;
 pub enum SkyMode {
     Overworld,
     Nether,
+    End,
 }
 
 fn background_color(ray_direction: &Vec3, time_of_day: f32, sky_mode: SkyMode) -> Color {
@@ -28,6 +29,10 @@ fn background_color(ray_direction: &Vec3, time_of_day: f32, sky_mode: SkyMode) -
             let ceiling_darkness = ((ray_direction.y + 1.0) * 0.5).clamp(0.0, 1.0);
             Color::new(42, 7, 10) * (0.65 + horizon_glow * 0.35)
                 + Color::new(35, 8, 5) * (1.0 - ceiling_darkness) * 0.35
+        }
+        SkyMode::End => {
+            // Un vacío oscuro estelar
+            Color::new(10, 5, 20)
         }
     }
 }
