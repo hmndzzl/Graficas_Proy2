@@ -42,6 +42,8 @@ pub fn build_inventory(texture_atlas: &Arc<Texture>) -> Vec<(&'static str, Mater
     let gold_mat = Material::new(Color::new(255, 255, 255), 80.0, [0.8, 0.5, 0.2, 0.0])
         .with_texture(Arc::clone(texture_atlas))
         .with_uv((1.0 / 16.0, 1.0 / 16.0), (7.0 / 16.0, 14.0 / 16.0));
+    let end_crystal_mat = Material::new(Color::new(255, 100, 255), 50.0, [0.1, 0.4, 0.1, 0.8])
+        .with_refractive_index(1.5).with_emission(true);
 
     vec![
         ("Césped", grass_mat),
@@ -51,7 +53,7 @@ pub fn build_inventory(texture_atlas: &Arc<Texture>) -> Vec<(&'static str, Mater
         ("Cristal", glass_mat),
         ("Ladrillos", tex_mat_from_top(texture_atlas, 6.0, 3.0)),
         ("Oro", gold_mat),
-        ("L. Roto", tex_mat_from_top(texture_atlas, 5.0, 6.0)),
+        ("C. del End", end_crystal_mat),
         ("Obsidiana", obsidian_mat(texture_atlas)),
     ]
 }
