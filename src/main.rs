@@ -1,3 +1,4 @@
+mod audio;
 mod camera;
 mod color;
 mod cube;
@@ -11,6 +12,7 @@ mod texture;
 mod ui;
 mod voxel_grid;
 
+use audio::AudioManager;
 use camera::Camera;
 use color::Color;
 use cube::Cube;
@@ -23,12 +25,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use texture::Texture;
 
-use diorama::{build_diorama, build_inventory, build_nether_diorama, tex_mat, DEFAULT_WORLD_SEED};
-use render::{render, SkyMode};
-use ui::draw_ui;
-use ray_intersect::RayIntersect;
-use voxel_grid::World;
+use diorama::{DEFAULT_WORLD_SEED, build_diorama, build_inventory, build_nether_diorama, tex_mat};
 use pig::Pig;
+use ray_intersect::RayIntersect;
+use render::{SkyMode, render};
+use ui::draw_ui;
+use voxel_grid::World;
 
 mod pig;
 
@@ -59,8 +61,11 @@ fn main() {
     let texture_atlas = Arc::new(Texture::new("assets/textures.png"));
     let pig_texture = Arc::new(Texture::new("assets/pig_temperate.png"));
     let mut overworld = World::from_objects(build_diorama(&texture_atlas, world_seed));
-    let mut nether = World::from_objects(build_nether_diorama(&texture_atlas, world_seed ^ 0x4E45_5448_4552));
-    
+    let mut nether = World::from_objects(build_nether_diorama(
+        &texture_atlas,
+        world_seed ^ 0x4E45_5448_4552,
+    ));
+
     // Add the Pig to the overworld
     let my_pig = Pig::new(Vec3::new(2.0, 0.5, 2.0), &pig_texture);
     overworld.entities.push(Box::new(my_pig));
@@ -73,6 +78,9 @@ fn main() {
     let mut time_of_day = 0.5; // Noon
 
     let mut camera = spawn_camera(realm);
+
+    let mut audio_manager = AudioManager::new();
+    audio_manager.play_music("Overworld");
 
     let mut camera_state = 0; // 0 = Moving (Render Low Res), 1 = Stopped (Render High Res), 2 = Done
 
@@ -96,8 +104,13 @@ fn main() {
         }
 
         let keys = [
-            Key::Key1, Key::Key2, Key::Key3, Key::Key4,
-            Key::Key5, Key::Key6, Key::Key7,
+            Key::Key1,
+            Key::Key2,
+            Key::Key3,
+            Key::Key4,
+            Key::Key5,
+            Key::Key6,
+            Key::Key7,
         ];
         for (i, key) in keys.iter().enumerate() {
             if window.is_key_pressed(*key, minifb::KeyRepeat::No) {
@@ -110,13 +123,13 @@ fn main() {
         let center_ray = normalize(&Vec3::new(0.0, 0.0, -1.0));
         let center_ray = camera.basis_change(&center_ray);
         let mut selected_block: Option<([i32; 3], crate::ray_intersect::Intersect)> = None;
-        
+
         {
             let world = match realm {
                 Realm::Overworld => &overworld,
                 Realm::Nether => &nether,
             };
-            
+
             if let Some(intersect) = world.ray_intersect(&camera.eye, &center_ray) {
                 if intersect.distance < 10.0 {
                     let hit_voxel = [
@@ -137,8 +150,14 @@ fn main() {
                 .is_some_and(|(_, hit)| hit.material.is_portal)
         {
             realm = match realm {
-                Realm::Overworld => Realm::Nether,
-                Realm::Nether => Realm::Overworld,
+                Realm::Overworld => {
+                    audio_manager.play_music("Nether");
+                    Realm::Nether
+                }
+                Realm::Nether => {
+                    audio_manager.play_music("Overworld");
+                    Realm::Overworld
+                }
             };
             // world dynamically selected
             camera = spawn_camera(realm);
@@ -232,67 +251,136 @@ fn main() {
         // Render continuously so animations play!
         let block_size = if camera_state == 0 { 2 } else { 1 }; // Render at half resolution when moving for speed
 
-            let (lights, sky_mode) = match realm {
-                Realm::Overworld => {
-                    let angle = time_of_day * std::f32::consts::PI * 2.0 - std::f32::consts::PI / 2.0;
-                    let sun_y = angle.sin() * 10.0;
-                    let sun_x = angle.cos() * 10.0;
-                    let is_day = sun_y > 0.0;
-                    let intensity = if is_day { 1.5 * (sun_y / 10.0).clamp(0.2, 1.0) } else { 0.3 };
-                    let light_color = if is_day { Color::new(255, 255, 255) } else { Color::new(100, 100, 255) };
-                    let light_pos = if is_day { Vec3::new(sun_x, sun_y, 8.0) } else { Vec3::new(-sun_x, -sun_y, -8.0) };
-                    (
-                        vec![
-                            Light::new(light_pos, light_color, intensity, 1000.0),
-                            // Lava light in mega cave
-                            Light::new(Vec3::new(0.0, -22.0, 0.0), Color::new(255, 120, 0), 2.8, 50.0),
-                            // Portal lights (front and back) en la nueva isla
-                            Light::new(Vec3::new(0.5, 4.5, -64.0), Color::new(200, 50, 255), 2.5, 8.0),
-                            Light::new(Vec3::new(0.5, 4.5, -66.0), Color::new(200, 50, 255), 2.5, 8.0),
-                        ],
-                        SkyMode::Overworld,
-                    )
-                }
-                Realm::Nether => (
+        let (lights, sky_mode) = match realm {
+            Realm::Overworld => {
+                let angle = time_of_day * std::f32::consts::PI * 2.0 - std::f32::consts::PI / 2.0;
+                let sun_y = angle.sin() * 10.0;
+                let sun_x = angle.cos() * 10.0;
+                let is_day = sun_y > 0.0;
+                let intensity = if is_day {
+                    1.5 * (sun_y / 10.0).clamp(0.2, 1.0)
+                } else {
+                    0.3
+                };
+                let light_color = if is_day {
+                    Color::new(255, 255, 255)
+                } else {
+                    Color::new(100, 100, 255)
+                };
+                let light_pos = if is_day {
+                    Vec3::new(sun_x, sun_y, 8.0)
+                } else {
+                    Vec3::new(-sun_x, -sun_y, -8.0)
+                };
+                (
                     vec![
-                            // Ambient nether light to make everything visible (MÁS BRILLANTE)
-                            Light::new(Vec3::new(0.0, 50.0, 0.0), Color::new(200, 100, 100), 1.2, 1000.0),
-                            // Lava light in the center of the Nether lake
-                            Light::new(Vec3::new(0.0, 1.0, 0.0), Color::new(255, 70, 12), 4.0, 40.0),
-                            // Portal lights at the start of the bridge (z = -15)
-                            Light::new(Vec3::new(-0.5, 4.5, -14.0), Color::new(200, 50, 255), 2.5, 8.0),
-                            Light::new(Vec3::new(-0.5, 4.5, -16.0), Color::new(200, 50, 255), 2.5, 8.0),
+                        Light::new(light_pos, light_color, intensity, 1000.0),
+                        // Lava light in mega cave
+                        Light::new(
+                            Vec3::new(0.0, -22.0, 0.0),
+                            Color::new(255, 120, 0),
+                            2.8,
+                            50.0,
+                        ),
+                        // Portal lights (front and back) en la nueva isla
+                        Light::new(
+                            Vec3::new(0.5, 4.5, -64.0),
+                            Color::new(200, 50, 255),
+                            2.5,
+                            8.0,
+                        ),
+                        Light::new(
+                            Vec3::new(0.5, 4.5, -66.0),
+                            Color::new(200, 50, 255),
+                            2.5,
+                            8.0,
+                        ),
                     ],
-                    SkyMode::Nether,
-                ),
-            };
-
-            let selected_voxel = selected_block.as_ref().map(|(v, _)| *v);
-
-            let current_world = match realm {
-                Realm::Overworld => &mut overworld,
-                Realm::Nether => &mut nether,
-            };
-
-            current_world.update(1.0 / 20.0); // simple fixed timestep
-
-            render(
-                &mut framebuffer,
-                current_world,
-                &camera,
-                &lights,
-                time_of_day,
-                block_size,
-                selected_voxel,
-                sky_mode,
-            );
-
-            draw_ui(&mut framebuffer, &inventory, active_block_index);
-
-            // Only advance to high-res if no keys are pressed (we stop moving)
-            if !moved {
-                camera_state += 1;
+                    SkyMode::Overworld,
+                )
             }
+            Realm::Nether => (
+                vec![
+                    // Ambient nether light to make everything visible (MÁS BRILLANTE)
+                    Light::new(
+                        Vec3::new(0.0, 50.0, 0.0),
+                        Color::new(200, 100, 100),
+                        1.2,
+                        1000.0,
+                    ),
+                    // Lava light in the center of the Nether lake
+                    Light::new(Vec3::new(0.0, 1.0, 0.0), Color::new(255, 70, 12), 4.0, 40.0),
+                    // Portal lights at the start of the bridge (z = -15)
+                    Light::new(
+                        Vec3::new(-0.5, 4.5, -14.0),
+                        Color::new(200, 50, 255),
+                        2.5,
+                        8.0,
+                    ),
+                    Light::new(
+                        Vec3::new(-0.5, 4.5, -16.0),
+                        Color::new(200, 50, 255),
+                        2.5,
+                        8.0,
+                    ),
+                ],
+                SkyMode::Nether,
+            ),
+        };
+
+        let selected_voxel = selected_block.as_ref().map(|(v, _)| *v);
+
+        let current_world = match realm {
+            Realm::Overworld => &mut overworld,
+            Realm::Nether => &mut nether,
+        };
+
+        current_world.update(1.0 / 20.0); // simple fixed timestep
+
+        render(
+            &mut framebuffer,
+            current_world,
+            &camera,
+            &lights,
+            time_of_day,
+            block_size,
+            selected_voxel,
+            sky_mode,
+        );
+
+        draw_ui(&mut framebuffer, &inventory, active_block_index);
+
+        // Only advance to high-res if no keys are pressed (we stop moving)
+        if !moved {
+            camera_state += 1;
+        }
+
+        // Update spatial audio
+        let portal_pos = match realm {
+            Realm::Overworld => Vec3::new(0.5, 3.5, -65.0),
+            Realm::Nether => Vec3::new(-0.5, 3.5, -15.0),
+        };
+        let in_nether = realm == Realm::Nether;
+
+        // Query pig position dynamically if in overworld, or fake it
+        let pig_pos = Vec3::new(2.0, 0.5, 2.0);
+        audio_manager.update_3d_audio(
+            camera.eye,
+            (camera.center - camera.eye).normalize(),
+            portal_pos,
+            pig_pos,
+            in_nether,
+        );
+
+        // Random pig sfx
+        let time_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        if time_ms % 6000 < 16 && !in_nether {
+            // Roughly every 8 seconds
+            audio_manager.play_pig_sfx();
+        }
 
         window
             .update_with_buffer(&framebuffer.buffer, WIDTH, HEIGHT)
@@ -320,7 +408,11 @@ fn spawn_camera(realm: Realm) -> Camera {
 fn read_world_seed() -> u64 {
     let args: Vec<String> = std::env::args().collect();
     args.windows(2)
-        .find_map(|pair| (pair[0] == "--seed").then(|| pair[1].parse().ok()).flatten())
+        .find_map(|pair| {
+            (pair[0] == "--seed")
+                .then(|| pair[1].parse().ok())
+                .flatten()
+        })
         .or_else(|| {
             args.iter().find_map(|arg| {
                 arg.strip_prefix("--seed=")
