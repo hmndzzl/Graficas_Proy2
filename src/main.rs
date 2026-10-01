@@ -167,7 +167,7 @@ fn main() {
                     teleported = true;
                 } else if dist_to_end_portal < 25.0 {
                     realm = Realm::End;
-                    audio_manager.play_music("Nether"); // Optional end music
+                    audio_manager.play_music("Overworld"); // Play overworld music in End
                     teleported = true;
                 }
             } else if realm == Realm::Nether {
