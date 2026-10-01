@@ -85,6 +85,22 @@ cargo run --release
 | **T** | Avanzar el tiempo suavemente (Ciclo Día/Noche animado) |
 | **Esc** | Salir del programa |
 
+## Inventario (Hotbar)
+
+Puedes seleccionar diferentes bloques para construir en el mundo pulsando las teclas del 1 al 9.
+
+| Tecla | Bloque |
+| :---: | :--- |
+| **1** | Césped |
+| **2** | Tablas de Madera |
+| **3** | Piedra |
+| **4** | Hojas |
+| **5** | Cristal |
+| **6** | Ladrillos de Piedra |
+| **7** | Bloque de Oro |
+| **8** | Cristal del End |
+| **9** | Obsidiana |
+
 ## Estructura de Dimensiones
 
 ### Overworld
