@@ -344,9 +344,7 @@ pub fn build_nether_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<
         // Soportes/pilares masivos que bajan hasta la lava
         if z % 6 == 0 {
             for x in &[-2, 1] { // Solo en los bordes
-                // Glowstone para iluminar el puente
-                objects.push(Box::new(unit_cube(*x as f32, 3.0, z as f32, glowstone.clone())));
-                
+
                 // Pilar hacia abajo
                 for y in -2..=0 {
                     objects.push(Box::new(unit_cube(*x as f32, y as f32, z as f32, nether_brick.clone())));
