@@ -58,7 +58,6 @@ fn main() {
 
     let texture_atlas = Arc::new(Texture::new("assets/textures.png"));
     let pig_texture = Arc::new(Texture::new("assets/pig_temperate.png"));
-
     let mut overworld = World::from_objects(build_diorama(&texture_atlas, world_seed));
     let mut nether = World::from_objects(build_nether_diorama(&texture_atlas, world_seed ^ 0x4E45_5448_4552));
     
@@ -96,33 +95,15 @@ fn main() {
             moved = true;
         }
 
-        if window.is_key_pressed(Key::Key1, minifb::KeyRepeat::No) {
-            active_block_index = 0;
-            moved = true;
-        }
-        if window.is_key_pressed(Key::Key2, minifb::KeyRepeat::No) {
-            active_block_index = 1;
-            moved = true;
-        }
-        if window.is_key_pressed(Key::Key3, minifb::KeyRepeat::No) {
-            active_block_index = 2;
-            moved = true;
-        }
-        if window.is_key_pressed(Key::Key4, minifb::KeyRepeat::No) {
-            active_block_index = 3;
-            moved = true;
-        }
-        if window.is_key_pressed(Key::Key5, minifb::KeyRepeat::No) {
-            active_block_index = 4;
-            moved = true;
-        }
-        if window.is_key_pressed(Key::Key6, minifb::KeyRepeat::No) {
-            active_block_index = 5;
-            moved = true;
-        }
-        if window.is_key_pressed(Key::Key7, minifb::KeyRepeat::No) {
-            active_block_index = 6;
-            moved = true;
+        let keys = [
+            Key::Key1, Key::Key2, Key::Key3, Key::Key4,
+            Key::Key5, Key::Key6, Key::Key7,
+        ];
+        for (i, key) in keys.iter().enumerate() {
+            if window.is_key_pressed(*key, minifb::KeyRepeat::No) {
+                active_block_index = i;
+                moved = true;
+            }
         }
 
         // Block Selection Raycasting
