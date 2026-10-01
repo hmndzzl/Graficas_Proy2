@@ -36,7 +36,7 @@ pub fn build_inventory(texture_atlas: &Arc<Texture>) -> Vec<(&'static str, Mater
     let grass_mat = tex_mat(texture_atlas, 3.0, 15.0);
     let planks_mat = tex_mat(texture_atlas, 4.0, 15.0);
     let stone_mat = tex_mat(texture_atlas, 1.0, 15.0);
-    let glass_mat = Material::new(Color::new(200, 220, 255), 50.0, [0.1, 0.4, 0.1, 0.8])
+    let glass_mat = Material::new(Color::new(200, 220, 255), 50.0, [0.8, 0.4, 0.1, 0.8])
         .with_refractive_index(1.5);
     let leaves_mat = tex_mat(texture_atlas, 4.0, 12.0);
 
@@ -73,9 +73,9 @@ pub fn build_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn Ray
     let wood_top = tex_mat(texture_atlas, 5.0, 14.0);
     let planks_mat = tex_mat(texture_atlas, 4.0, 15.0);
     let leaves_mat = tex_mat(texture_atlas, 4.0, 12.0);
-    let glass_mat = Material::new(Color::new(200, 220, 255), 50.0, [0.1, 0.4, 0.1, 0.65])
+    let glass_mat = Material::new(Color::new(200, 220, 255), 50.0, [0.8, 0.4, 0.1, 0.65])
         .with_refractive_index(1.5);
-    let water_mat = Material::new(Color::new(50, 115, 255), 40.0, [0.15, 0.3, 0.08, 0.58])
+    let water_mat = Material::new(Color::new(50, 115, 255), 40.0, [0.8, 0.3, 0.08, 0.58])
         .with_refractive_index(1.33)
         .with_water(true);
     let lava_mat = tex_mat(texture_atlas, 15.0, 0.0).with_emission(true);
