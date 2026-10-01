@@ -255,11 +255,13 @@ fn main() {
                 }
                 Realm::Nether => (
                     vec![
+                            // Ambient nether light to make everything visible (MÁS BRILLANTE)
+                            Light::new(Vec3::new(0.0, 50.0, 0.0), Color::new(200, 100, 100), 1.2, 1000.0),
                             // Lava light in the center of the Nether lake
-                            Light::new(Vec3::new(0.0, 1.0, 0.0), Color::new(255, 70, 12), 3.0, 20.0),
-                            // Portal lights at the end of the bridge
-                            Light::new(Vec3::new(-0.5, 4.5, 16.0), Color::new(200, 50, 255), 2.5, 8.0),
-                            Light::new(Vec3::new(-0.5, 4.5, 14.0), Color::new(200, 50, 255), 2.5, 8.0),
+                            Light::new(Vec3::new(0.0, 1.0, 0.0), Color::new(255, 70, 12), 4.0, 40.0),
+                            // Portal lights at the start of the bridge (z = -15)
+                            Light::new(Vec3::new(-0.5, 4.5, -14.0), Color::new(200, 50, 255), 2.5, 8.0),
+                            Light::new(Vec3::new(-0.5, 4.5, -16.0), Color::new(200, 50, 255), 2.5, 8.0),
                     ],
                     SkyMode::Nether,
                 ),
@@ -308,8 +310,8 @@ fn spawn_camera(realm: Realm) -> Camera {
             Vec3::new(0.0, 1.0, 0.0),
         ),
         Realm::Nether => Camera::new(
-            Vec3::new(0.0, 3.0, 11.0),
-            Vec3::new(-0.5, 3.2, 4.0),
+            Vec3::new(-0.5, 3.0, -14.0), // Spawn at the portal at z = -14
+            Vec3::new(-0.5, 3.0, 15.0),  // Look towards the fortress at z = 15
             Vec3::new(0.0, 1.0, 0.0),
         ),
     }

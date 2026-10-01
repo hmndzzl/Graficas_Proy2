@@ -182,25 +182,30 @@ pub fn build_nether_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<
     let soul_sand = tex_mat_from_top(texture_atlas, 8.0, 6.0);
     let glowstone = tex_mat_from_top(texture_atlas, 9.0, 6.0).with_emission(true);
     let lava = tex_mat(texture_atlas, 15.0, 0.0).with_emission(true);
-    let quartz_ore = tex_mat_from_top(texture_atlas, 6.0, 6.0); // Mineral de cuarzo
-    let obsidian = obsidian_mat(texture_atlas); // Para la fortaleza
+    let quartz_ore = tex_mat_from_top(texture_atlas, 15.0, 1.0); // Mineral de cuarzo actualizado
+    let nether_gold_ore = tex_mat_from_top(texture_atlas, 15.0, 2.0); // Mineral de oro del nether
+    let gold_block = Material::new(Color::new(255, 255, 255), 80.0, [0.8, 0.5, 0.2, 0.0])
+        .with_texture(Arc::clone(texture_atlas))
+        .with_uv((1.0 / 16.0, 1.0 / 16.0), (7.0 / 16.0, 14.0 / 16.0)); // Bloque de oro puro
+    let nether_brick = tex_mat_from_top(texture_atlas, 0.0, 14.0); // Para la fortaleza
+    let obsidian = obsidian_mat(texture_atlas); // Para el portal
 
-    // 1. Generación orgánica de la isla base
-    for x in -22..=22 {
-        for z in -22..=22 {
-            let base_radius = 18.0 + (x as f32 * 0.4).sin() * 3.0 + (z as f32 * 0.3).cos() * 4.0;
+    // 1. Generación orgánica de la isla base (AMPLIADA)
+    for x in -35..=35 {
+        for z in -35..=35 {
+            let base_radius = 28.0 + (x as f32 * 0.4).sin() * 4.0 + (z as f32 * 0.3).cos() * 5.0;
             let dist = ((x*x + z*z) as f32).sqrt();
             
             if dist <= base_radius {
-                let depth = -20 - (seeded_noise(seed ^ 0x666, x, z) * 10.0) as i32;
+                let depth = -25 - (seeded_noise(seed ^ 0x666, x, z) * 10.0) as i32;
                 
                 for y in depth..=0 {
                     // Tapering (estrechamiento hacia abajo)
-                    let max_radius_at_y = base_radius + (y as f32 * 0.7);
+                    let max_radius_at_y = base_radius + (y as f32 * 0.6);
                     if dist > max_radius_at_y { continue; }
                     
-                    // Lago de lava en el centro
-                    if y >= -2 && y <= 0 && dist < 10.0 {
+                    // Lago de lava en el centro (AMPLIADO)
+                    if y >= -2 && y <= 0 && dist < 14.0 {
                         objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, lava.clone())));
                         continue;
                     }
@@ -208,8 +213,11 @@ pub fn build_nether_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<
                     let material = if y == 0 {
                         if seeded_noise(seed ^ 0x111, x, z) > 0.5 { soul_sand.clone() } else { netherrack.clone() }
                     } else {
-                        if seeded_noise(seed ^ 0x222, x, y ^ z) > 0.95 {
+                        let rand_val = seeded_noise(seed ^ 0x222, x, y ^ z);
+                        if rand_val > 0.95 {
                             quartz_ore.clone()
+                        } else if rand_val > 0.90 {
+                            nether_gold_ore.clone()
                         } else {
                             netherrack.clone()
                         }
@@ -218,13 +226,18 @@ pub fn build_nether_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<
                     objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, material)));
                 }
                 
-                // Estalagmitas y estructuras naturales
-                if dist > 10.0 && seeded_noise(seed ^ 0x444, x, z) > 0.96 {
-                    let height = 2 + (seeded_noise(seed ^ 0x555, x, z) * 5.0) as i32;
+                // Estalagmitas y estructuras naturales (alejadas del centro)
+                if dist > 14.0 && seeded_noise(seed ^ 0x444, x, z) > 0.96 {
+                    let height = 2 + (seeded_noise(seed ^ 0x555, x, z) * 6.0) as i32;
                     for step in 1..=height {
                         objects.push(Box::new(unit_cube(x as f32, step as f32, z as f32, netherrack.clone())));
                     }
-                    if seeded_noise(seed, x, z) > 0.5 {
+                    
+                    // En la punta de algunas estalagmitas ponemos Glowstone o un Bloque de Oro!
+                    let rand_tip = seeded_noise(seed, x, z);
+                    if rand_tip > 0.8 {
+                        objects.push(Box::new(unit_cube(x as f32, height as f32 + 1.0, z as f32, gold_block.clone())));
+                    } else if rand_tip > 0.5 {
                         objects.push(Box::new(unit_cube(x as f32, height as f32 + 1.0, z as f32, glowstone.clone())));
                     }
                 }
@@ -232,35 +245,79 @@ pub fn build_nether_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<
         }
     }
 
-    // 2. Puente de Fortaleza en ruinas cruzando el lago de lava
+    // 2. Puente de Fortaleza cruzando el lago de lava (4 de ancho)
     for z in -15..=15 {
-        if seeded_noise(seed ^ 0x777, 0, z) > 0.2 { // Ruinas (agujeros en el puente)
-            objects.push(Box::new(unit_cube(-1.0, 1.0, z as f32, obsidian.clone())));
-            objects.push(Box::new(unit_cube(0.0, 1.0, z as f32, obsidian.clone())));
-            objects.push(Box::new(unit_cube(1.0, 1.0, z as f32, obsidian.clone())));
-            
-            // Pilares de la fortaleza
-            if z % 5 == 0 {
-                objects.push(Box::new(unit_cube(-1.0, 2.0, z as f32, obsidian.clone())));
-                objects.push(Box::new(unit_cube(1.0, 2.0, z as f32, obsidian.clone())));
-                objects.push(Box::new(unit_cube(-1.0, 3.0, z as f32, glowstone.clone())));
-                objects.push(Box::new(unit_cube(1.0, 3.0, z as f32, glowstone.clone())));
+        for x in -2..=1 {
+            // Generamos piso con partes rotas (hoyos aleatorios)
+            if seeded_noise(seed ^ 0x777, x, z) > 0.25 {
+                objects.push(Box::new(unit_cube(x as f32, 1.0, z as f32, nether_brick.clone())));
                 
-                // Soportes que bajan hasta la lava
+                // Barandas en las posiciones 1 (x=-2) y 4 (x=1)
+                if x == -2 || x == 1 {
+                    // Las barandas también tienen probabilidad de estar rotas
+                    if seeded_noise(seed ^ 0x888, x, z) > 0.15 {
+                        objects.push(Box::new(unit_cube(x as f32, 2.0, z as f32, nether_brick.clone())));
+                    }
+                }
+            }
+        }
+        
+        // Soportes/pilares masivos que bajan hasta la lava
+        if z % 6 == 0 {
+            for x in &[-2, 1] { // Solo en los bordes
+                // Glowstone para iluminar el puente
+                objects.push(Box::new(unit_cube(*x as f32, 3.0, z as f32, glowstone.clone())));
+                
+                // Pilar hacia abajo
                 for y in -2..=0 {
-                    objects.push(Box::new(unit_cube(-1.0, y as f32, z as f32, obsidian.clone())));
-                    objects.push(Box::new(unit_cube(1.0, y as f32, z as f32, obsidian.clone())));
+                    objects.push(Box::new(unit_cube(*x as f32, y as f32, z as f32, nether_brick.clone())));
                 }
             }
         }
     }
 
-    // 3. Portal de regreso, al final del puente
+    // 3. Mini Fortaleza del Nether (al final del puente)
+    for x in -7..=7 {
+        for z in 15..=25 {
+            // Piso de la fortaleza
+            objects.push(Box::new(unit_cube(x as f32, 1.0, z as f32, nether_brick.clone())));
+            
+            // Paredes exteriores altas
+            if x == -7 || x == 7 || z == 25 || (z == 15 && (x < -2 || x > 2)) {
+                for y in 2..=6 {
+                    // Ventanas (agujeros en la pared)
+                    if y == 3 && z % 2 == 0 {
+                        continue;
+                    }
+                    if y == 4 && x % 2 == 0 {
+                        continue;
+                    }
+                    objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, nether_brick.clone())));
+                }
+                // Almenas superiores (coronas de la fortaleza)
+                if (x + z) % 2 != 0 {
+                    objects.push(Box::new(unit_cube(x as f32, 7.0, z as f32, nether_brick.clone())));
+                }
+            }
+            
+            // Pequeñas pilas de bloques de oro en el interior (reemplazando los pilares)
+            if (x == -4 || x == 4) && (z == 18 || z == 22) {
+                // Pilas pequeñas de oro (entre 1 y 3 bloques de alto)
+                let height = if z == 18 { if x == -4 { 3 } else { 1 } } else { if x == 4 { 2 } else { 1 } };
+                
+                for y in 2..=1 + height {
+                    objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, gold_block.clone())));
+                }
+            }
+        }
+    }
+
+    // 4. Portal de regreso, al INICIO del puente (contrario a la fortaleza)
     add_portal(
         &mut objects,
-        -2, // origin_x (el puente va de -1 a 1, así que centrado)
+        -2, // origin_x
         2,  // origin_y
-        15, // origin_z (al final del puente en +Z)
+        -15, // origin_z (inicio del puente)
         &obsidian.clone(),
         &portal_mat(texture_atlas),
     );
