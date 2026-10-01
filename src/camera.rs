@@ -48,7 +48,7 @@ impl Camera {
     pub fn zoom(&mut self, factor: f32) {
         let radius_vector = self.eye - self.center;
         let current_radius = radius_vector.magnitude();
-        let new_radius = (current_radius * factor).clamp(1.5, 30.0);
+        let new_radius = (current_radius * factor).clamp(1.5, 150.0);
         let direction = radius_vector.normalize();
         self.eye = self.center + direction * new_radius;
     }
