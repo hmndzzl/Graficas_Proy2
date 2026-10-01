@@ -99,9 +99,9 @@ pub fn build_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn Ray
     add_island_surface(&mut objects, 0, -65, SMALL_RADIUS, true, &grass_side, &grass_top, &dirt_mat, seed ^ 0x9999);
     add_voxel_island(&mut objects, 0, -65, SMALL_RADIUS, true, &dirt_mat, &stone_mat, seed ^ 0x9999);
     
-    // --- Isla Pequeña (Encantamientos pegada a la casa en +X) ---
-    add_island_surface(&mut objects, 55, 15, SMALL_RADIUS, true, &grass_side, &grass_top, &dirt_mat, seed ^ 0x8888);
-    add_voxel_island(&mut objects, 55, 15, SMALL_RADIUS, true, &dirt_mat, &stone_mat, seed ^ 0x8888);
+    // --- Isla Pequeña (Encantamientos verdaderamente separada) ---
+    add_island_surface(&mut objects, 10, 55, SMALL_RADIUS, true, &grass_side, &grass_top, &dirt_mat, seed ^ 0x8888);
+    add_voxel_island(&mut objects, 10, 55, SMALL_RADIUS, true, &dirt_mat, &stone_mat, seed ^ 0x8888);
     
     // --- Puente Colgante Decorado ---
     for z in -53..=-35 {
@@ -161,21 +161,21 @@ pub fn build_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn Ray
         &portal_mat(texture_atlas),
     );
     
-    // --- Puente Hacia los Encantamientos (conectando el porche hacia la isla) ---
-    for x in 41..=47 {
-        for z in 13..=17 {
-            let drop = -((x - 44) as f32 / 4.0).powi(2) * 0.2 + 0.2;
+    // --- Puente Hacia los Encantamientos (cruzando la cueva en z=20) ---
+    for z in 15..=50 {
+        for x in 8..=12 {
+            let drop = -((z - 32) as f32 / 17.0).powi(2) * 1.5 + 1.5;
             let y_bridge = 1.0 - drop;
             
-            if z >= 14 && z <= 16 {
+            if x >= 9 && x <= 11 {
                 objects.push(Box::new(unit_cube(x as f32, y_bridge, z as f32, planks_mat.clone())));
             } else {
-                if x % 2 == 0 {
+                if z % 3 == 0 {
                     objects.push(Box::new(unit_cube(x as f32, y_bridge + 1.0, z as f32, wood_mat.clone())));
                 }
                 objects.push(Box::new(unit_cube(x as f32, y_bridge + 0.5, z as f32, planks_mat.clone())));
                 
-                if x % 4 == 0 {
+                if z % 6 == 0 {
                     for step in 1..=4 {
                         objects.push(Box::new(unit_cube(x as f32, y_bridge - step as f32, z as f32, wood_mat.clone())));
                     }
@@ -184,9 +184,20 @@ pub fn build_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn Ray
         }
     }
     
-    // --- Zona de Encantamientos ---
-    // Mesa de encantamientos en el centro de la isla (55, 15)
-    let ench_cube = unit_cube(55.0, 1.0, 15.0, ench_side1)
+    // --- Zona de Encantamientos (Altar de Madera) ---
+    // Plataforma de madera para el altar en y=1
+    for bx in 8..=12 {
+        for bz in 53..=57 {
+            if bx == 8 || bx == 12 || bz == 53 || bz == 57 {
+                objects.push(Box::new(unit_cube(bx as f32, 1.0, bz as f32, wood_mat.clone())));
+            } else {
+                objects.push(Box::new(unit_cube(bx as f32, 1.0, bz as f32, planks_mat.clone())));
+            }
+        }
+    }
+    
+    // Mesa de encantamientos en el centro de la isla, elevada sobre el altar (10, 2, 55)
+    let ench_cube = unit_cube(10.0, 2.0, 55.0, ench_side1)
         .with_top_material(ench_top)
         .with_bottom_material(ench_bot)
         .with_left_material(ench_side2.clone())
@@ -195,31 +206,26 @@ pub fn build_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn Ray
     
     // Librerías alrededor de la mesa
     // Un círculo con 1 bloque de aire entre la mesa y las librerías
-    for bx in 53..=57 {
-        for bz in 13..=17 {
-            // Colocar 2 pisos de librerías en el perímetro exterior
-            if bx == 53 || bx == 57 || bz == 13 || bz == 17 {
-                // Entrada del lado del puente (x = 53, z=14..16)
-                if bx == 53 && bz >= 14 && bz <= 16 { continue; }
+    for bx in 8..=12 {
+        for bz in 53..=57 {
+            // Colocar 2 pisos de librerías en el perímetro exterior (y=2, y=3)
+            if bx == 8 || bx == 12 || bz == 53 || bz == 57 {
+                // Entrada del lado del puente (z=53, x=9..11)
+                if bz == 53 && bx >= 9 && bx <= 11 { continue; }
                 
-                let bs_cube_1 = unit_cube(bx as f32, 1.0, bz as f32, bookshelf_mat.clone())
+                let bs_cube_1 = unit_cube(bx as f32, 2.0, bz as f32, bookshelf_mat.clone())
                     .with_top_material(planks_mat.clone())
                     .with_bottom_material(planks_mat.clone());
                 objects.push(Box::new(bs_cube_1));
                 
-                let bs_cube_2 = unit_cube(bx as f32, 2.0, bz as f32, bookshelf_mat.clone())
+                let bs_cube_2 = unit_cube(bx as f32, 3.0, bz as f32, bookshelf_mat.clone())
                     .with_top_material(planks_mat.clone())
                     .with_bottom_material(planks_mat.clone());
                 objects.push(Box::new(bs_cube_2));
             }
         }
     }
-    
-    // Iluminación para la zona de encantamientos
-    objects.push(Box::new(unit_cube(53.0, 3.0, 13.0, glowstone.clone())));
-    objects.push(Box::new(unit_cube(57.0, 3.0, 13.0, glowstone.clone())));
-    objects.push(Box::new(unit_cube(53.0, 3.0, 17.0, glowstone.clone())));
-    objects.push(Box::new(unit_cube(57.0, 3.0, 17.0, glowstone.clone())));
+    // (Glowstone eliminada para dejarlo al descubierto)
 
     // Generación de un Mini Bosque denso para llenar la isla
     for x in -35..=35 {
