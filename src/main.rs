@@ -89,6 +89,8 @@ fn main() {
 
     let mut camera_state = 0; // 0 = Moving (Render Low Res), 1 = Stopped (Render High Res), 2 = Done
 
+    let mut last_pig_sfx_time = 0;
+
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let mut moved = false;
 
@@ -429,9 +431,9 @@ fn main() {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis();
-        if time_ms % 3000 < 16 && !in_other_dimension {
-            // Roughly every 3 seconds
+        if time_ms - last_pig_sfx_time > 4000 && !in_other_dimension {
             audio_manager.play_pig_sfx();
+            last_pig_sfx_time = time_ms;
         }
 
         window
