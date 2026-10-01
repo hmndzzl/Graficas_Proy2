@@ -244,23 +244,22 @@ fn main() {
                     (
                         vec![
                             Light::new(light_pos, light_color, intensity, 1000.0),
-                            // Lava light
-                            Light::new(Vec3::new(0.0, -3.0, 1.5), Color::new(255, 120, 0), 2.3, 10.0),
-                            // Portal lights (front and back)
-                            Light::new(Vec3::new(7.5, 3.5, 5.0), Color::new(200, 50, 255), 2.5, 8.0),
-                            Light::new(Vec3::new(7.5, 3.5, 3.0), Color::new(200, 50, 255), 2.5, 8.0),
+                            // Lava light in mega cave
+                            Light::new(Vec3::new(0.0, -22.0, 0.0), Color::new(255, 120, 0), 2.8, 50.0),
+                            // Portal lights (front and back) en la nueva isla
+                            Light::new(Vec3::new(0.5, 4.5, -64.0), Color::new(200, 50, 255), 2.5, 8.0),
+                            Light::new(Vec3::new(0.5, 4.5, -66.0), Color::new(200, 50, 255), 2.5, 8.0),
                         ],
                         SkyMode::Overworld,
                     )
                 }
                 Realm::Nether => (
                     vec![
-                        // Lava lights
-                        Light::new(Vec3::new(4.5, 2.5, 0.0), Color::new(255, 70, 12), 2.6, 10.0),
-                        Light::new(Vec3::new(-2.5, 7.0, -1.0), Color::new(255, 160, 55), 1.5, 8.0),
-                        // Portal lights (front and back)
-                        Light::new(Vec3::new(-0.5, 3.5, 5.0), Color::new(200, 50, 255), 2.5, 8.0),
-                        Light::new(Vec3::new(-0.5, 3.5, 3.0), Color::new(200, 50, 255), 2.5, 8.0),
+                            // Lava light in the center of the Nether lake
+                            Light::new(Vec3::new(0.0, 1.0, 0.0), Color::new(255, 70, 12), 3.0, 20.0),
+                            // Portal lights at the end of the bridge
+                            Light::new(Vec3::new(-0.5, 4.5, 16.0), Color::new(200, 50, 255), 2.5, 8.0),
+                            Light::new(Vec3::new(-0.5, 4.5, 14.0), Color::new(200, 50, 255), 2.5, 8.0),
                     ],
                     SkyMode::Nether,
                 ),
