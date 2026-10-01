@@ -28,6 +28,9 @@ use render::{render, SkyMode};
 use ui::draw_ui;
 use ray_intersect::RayIntersect;
 use voxel_grid::World;
+use pig::Pig;
+
+mod pig;
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
@@ -54,10 +57,15 @@ fn main() {
     .unwrap();
 
     let texture_atlas = Arc::new(Texture::new("assets/textures.png"));
+    let pig_texture = Arc::new(Texture::new("assets/pig_temperate.png"));
 
     let mut overworld = World::from_objects(build_diorama(&texture_atlas, world_seed));
     let mut nether = World::from_objects(build_nether_diorama(&texture_atlas, world_seed ^ 0x4E45_5448_4552));
     
+    // Add the Pig to the overworld
+    let my_pig = Pig::new(Vec3::new(2.0, 0.5, 2.0), &pig_texture);
+    overworld.entities.push(Box::new(my_pig));
+
     let inventory = build_inventory(&texture_atlas);
     let mut realm = Realm::Overworld;
 
@@ -240,8 +248,8 @@ fn main() {
             camera_state = 0;
         }
 
-        if camera_state < 2 {
-            let block_size = if camera_state == 0 { 2 } else { 1 }; // Render at half resolution when moving for a balance of speed and quality
+        // Render continuously so animations play!
+        let block_size = if camera_state == 0 { 2 } else { 1 }; // Render at half resolution when moving for speed
 
             let (lights, sky_mode) = match realm {
                 Realm::Overworld => {
@@ -279,14 +287,16 @@ fn main() {
 
             let selected_voxel = selected_block.as_ref().map(|(v, _)| *v);
 
-            let render_world = match realm {
-                Realm::Overworld => &overworld,
-                Realm::Nether => &nether,
+            let current_world = match realm {
+                Realm::Overworld => &mut overworld,
+                Realm::Nether => &mut nether,
             };
+
+            current_world.update(1.0 / 20.0); // simple fixed timestep
 
             render(
                 &mut framebuffer,
-                render_world,
+                current_world,
                 &camera,
                 &lights,
                 time_of_day,
@@ -301,7 +311,6 @@ fn main() {
             if !moved {
                 camera_state += 1;
             }
-        }
 
         window
             .update_with_buffer(&framebuffer.buffer, WIDTH, HEIGHT)
