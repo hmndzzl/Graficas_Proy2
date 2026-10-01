@@ -79,10 +79,12 @@ pub fn build_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn Ray
     let lava_mat = tex_mat(texture_atlas, 15.0, 0.0).with_emission(true);
     let lamp_mat = Material::new(Color::new(255, 250, 220), 0.0, [1.0, 0.0, 0.0, 0.0]).with_emission(true);
     
-    // Enchanting Table
-    let enchant_mat = Material::new(Color::new(255, 255, 255), 10.0, [0.0, 0.0, 0.0, 0.0])
-        .with_texture(Arc::clone(texture_atlas))
-        .with_uv((6.0 / 16.0, 10.0 / 16.0), (7.0 / 16.0, 11.0 / 16.0));
+    // Enchanting Table Materials
+    let ench_top = tex_mat_from_top(texture_atlas, 6.0, 10.0);
+    let ench_bot = tex_mat_from_top(texture_atlas, 7.0, 10.0);
+    let ench_side1 = tex_mat_from_top(texture_atlas, 6.0, 11.0);
+    let ench_side2 = tex_mat_from_top(texture_atlas, 7.0, 11.0);
+    
     // Bookshelves (standard Minecraft pos: side 3,2, top/bottom wood planks 4,0)
     let bookshelf_mat = tex_mat_from_top(texture_atlas, 3.0, 2.0);
 
@@ -97,9 +99,9 @@ pub fn build_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn Ray
     add_island_surface(&mut objects, 0, -65, SMALL_RADIUS, true, &grass_side, &grass_top, &dirt_mat, seed ^ 0x9999);
     add_voxel_island(&mut objects, 0, -65, SMALL_RADIUS, true, &dirt_mat, &stone_mat, seed ^ 0x9999);
     
-    // --- Isla Pequeña (Encantamientos en -X) ---
-    add_island_surface(&mut objects, -65, 0, SMALL_RADIUS, true, &grass_side, &grass_top, &dirt_mat, seed ^ 0x8888);
-    add_voxel_island(&mut objects, -65, 0, SMALL_RADIUS, true, &dirt_mat, &stone_mat, seed ^ 0x8888);
+    // --- Isla Pequeña (Encantamientos pegada a la casa en +X) ---
+    add_island_surface(&mut objects, 55, 15, SMALL_RADIUS, true, &grass_side, &grass_top, &dirt_mat, seed ^ 0x8888);
+    add_voxel_island(&mut objects, 55, 15, SMALL_RADIUS, true, &dirt_mat, &stone_mat, seed ^ 0x8888);
     
     // --- Puente Colgante Decorado ---
     for z in -53..=-35 {
@@ -159,23 +161,23 @@ pub fn build_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn Ray
         &portal_mat(texture_atlas),
     );
     
-    // --- Puente Hacia los Encantamientos (en X) ---
-    for x in -53..=-35 {
-        for z in -2..=2 {
-            let drop = -((x + 44) as f32 / 9.0).powi(2) * 0.5 + 0.5;
-            let y_bridge = -drop;
+    // --- Puente Hacia los Encantamientos (conectando el porche hacia la isla) ---
+    for x in 41..=47 {
+        for z in 13..=17 {
+            let drop = -((x - 44) as f32 / 4.0).powi(2) * 0.2 + 0.2;
+            let y_bridge = 1.0 - drop;
             
-            if z >= -1 && z <= 1 {
+            if z >= 14 && z <= 16 {
                 objects.push(Box::new(unit_cube(x as f32, y_bridge, z as f32, planks_mat.clone())));
             } else {
-                if x % 3 == 0 {
+                if x % 2 == 0 {
                     objects.push(Box::new(unit_cube(x as f32, y_bridge + 1.0, z as f32, wood_mat.clone())));
                 }
                 objects.push(Box::new(unit_cube(x as f32, y_bridge + 0.5, z as f32, planks_mat.clone())));
                 
-                if x % 6 == 0 {
+                if x % 4 == 0 {
                     for step in 1..=4 {
-                        objects.push(Box::new(unit_cube(x as f32, y_bridge - step as f32, z as f32, planks_mat.clone())));
+                        objects.push(Box::new(unit_cube(x as f32, y_bridge - step as f32, z as f32, wood_mat.clone())));
                     }
                 }
             }
@@ -183,35 +185,41 @@ pub fn build_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn Ray
     }
     
     // --- Zona de Encantamientos ---
-    // Mesa de encantamientos en el centro de la isla (-65, 0)
-    objects.push(Box::new(unit_cube(-65.0, 1.0, 0.0, enchant_mat.clone())));
+    // Mesa de encantamientos en el centro de la isla (55, 15)
+    let ench_cube = unit_cube(55.0, 1.0, 15.0, ench_side1)
+        .with_top_material(ench_top)
+        .with_bottom_material(ench_bot)
+        .with_left_material(ench_side2.clone())
+        .with_right_material(ench_side2);
+    objects.push(Box::new(ench_cube));
     
     // Librerías alrededor de la mesa
-    // Un círculo/cuadrado con 1 bloque de aire entre la mesa y las librerías
-    for bx in -67..=-63 {
-        for bz in -2..=2 {
-            // Evitar rellenar el interior
-            if (bx == -66 || bx == -65 || bx == -64) && (bz == -1 || bz == 0 || bz == 1) {
-                // Si estamos al frente de la mesa (x = -64..-66, z = 1..2), dejar entrada libre
-                if bz >= 1 { continue; }
-            }
-            
-            // Colocar 2 pisos de librerías
-            if bx == -67 || bx == -63 || bz == -2 || bz == 2 {
-                // Entrada
-                if bz == 2 && bx > -66 && bx < -64 { continue; }
+    // Un círculo con 1 bloque de aire entre la mesa y las librerías
+    for bx in 53..=57 {
+        for bz in 13..=17 {
+            // Colocar 2 pisos de librerías en el perímetro exterior
+            if bx == 53 || bx == 57 || bz == 13 || bz == 17 {
+                // Entrada del lado del puente (x = 53, z=14..16)
+                if bx == 53 && bz >= 14 && bz <= 16 { continue; }
                 
-                objects.push(Box::new(unit_cube(bx as f32, 1.0, bz as f32, bookshelf_mat.clone())));
-                objects.push(Box::new(unit_cube(bx as f32, 2.0, bz as f32, bookshelf_mat.clone())));
+                let bs_cube_1 = unit_cube(bx as f32, 1.0, bz as f32, bookshelf_mat.clone())
+                    .with_top_material(planks_mat.clone())
+                    .with_bottom_material(planks_mat.clone());
+                objects.push(Box::new(bs_cube_1));
+                
+                let bs_cube_2 = unit_cube(bx as f32, 2.0, bz as f32, bookshelf_mat.clone())
+                    .with_top_material(planks_mat.clone())
+                    .with_bottom_material(planks_mat.clone());
+                objects.push(Box::new(bs_cube_2));
             }
         }
     }
     
     // Iluminación para la zona de encantamientos
-    objects.push(Box::new(unit_cube(-67.0, 3.0, -2.0, glowstone.clone())));
-    objects.push(Box::new(unit_cube(-63.0, 3.0, -2.0, glowstone.clone())));
-    objects.push(Box::new(unit_cube(-67.0, 3.0, 2.0, glowstone.clone())));
-    objects.push(Box::new(unit_cube(-63.0, 3.0, 2.0, glowstone.clone())));
+    objects.push(Box::new(unit_cube(53.0, 3.0, 13.0, glowstone.clone())));
+    objects.push(Box::new(unit_cube(57.0, 3.0, 13.0, glowstone.clone())));
+    objects.push(Box::new(unit_cube(53.0, 3.0, 17.0, glowstone.clone())));
+    objects.push(Box::new(unit_cube(57.0, 3.0, 17.0, glowstone.clone())));
 
     // Generación de un Mini Bosque denso para llenar la isla
     for x in -35..=35 {
