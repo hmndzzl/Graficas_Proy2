@@ -115,12 +115,20 @@ pub fn shade(
     let mut total_specular = Color::new(0, 0, 0);
 
     for light in lights {
-        let light_direction = (light.position - intersect.point).normalize();
+        let light_dir_unnormalized = light.position - intersect.point;
+        let distance = light_dir_unnormalized.magnitude();
+        let light_direction = light_dir_unnormalized.normalize();
+
+        // Distance attenuation
+        let attenuation = (1.0 - (distance / light.radius)).max(0.0).powi(2);
+        
         let shadow_intensity = cast_shadow(intersect, &light_direction, light, world);
-        let light_intensity = light.intensity * (1.0 - shadow_intensity);
+        let light_intensity = light.intensity * attenuation * (1.0 - shadow_intensity);
+
+        if light_intensity <= 0.0 { continue; }
 
         let diffuse_intensity = dot(&intersect.normal, &light_direction).max(0.0);
-        let diffuse = base_color * (diffuse_intensity * intersect.material.albedo[0] * light_intensity);
+        let diffuse = (base_color * light.color) * (diffuse_intensity * intersect.material.albedo[0] * light_intensity);
         total_diffuse = total_diffuse + diffuse;
 
         let reflect_direction = reflect(&-light_direction, &intersect.normal);

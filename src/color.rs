@@ -51,6 +51,18 @@ impl Mul<f32> for Color {
     }
 }
 
+impl Mul<Color> for Color {
+    type Output = Color;
+
+    fn mul(self, other: Color) -> Color {
+        Color {
+            r: ((self.r as f32 * other.r as f32) / 255.0) as u8,
+            g: ((self.g as f32 * other.g as f32) / 255.0) as u8,
+            b: ((self.b as f32 * other.b as f32) / 255.0) as u8,
+        }
+    }
+}
+
 impl fmt::Display for Color {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Color(r: {}, g: {}, b: {})", self.r, self.g, self.b)
