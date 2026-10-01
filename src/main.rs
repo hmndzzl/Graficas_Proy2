@@ -189,10 +189,8 @@ fn main() {
                 if realm == Realm::Overworld {
                     if previous_realm == Realm::Nether {
                         camera.eye = Vec3::new(0.5, 5.0, -50.0);
-                        camera.center = Vec3::new(0.5, 3.5, -65.0);
                     } else if previous_realm == Realm::End {
                         camera.eye = Vec3::new(-45.0, 5.0, 0.0);
-                        camera.center = Vec3::new(-55.0, 1.0, 0.0);
                     }
                 }
                 selected_block = None;
