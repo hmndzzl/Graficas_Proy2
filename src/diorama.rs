@@ -214,9 +214,9 @@ pub fn build_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn Ray
     );
 
     // Plataforma (Altar) para el portal
-    let stone_brick = tex_mat(texture_atlas, 4.0, 15.0);
+    let netherrack = tex_mat_from_top(texture_atlas, 7.0, 6.0);
     let glowstone = tex_mat_from_top(texture_atlas, 9.0, 6.0).with_emission(true);
-    add_portal_structure(&mut objects, -1, -65, &stone_brick, &glowstone);
+    add_portal_structure(&mut objects, -1, -65, &netherrack, &glowstone);
 
     // El portal mira hacia el frente (+Z), sobre la plataforma
     add_portal(
