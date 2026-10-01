@@ -249,3 +249,46 @@ pub fn get_sky_color(ray_direction: &Vec3, time_of_day: f32) -> Color {
 
     sky
 }
+
+pub fn get_end_sky_color(ray_direction: &Vec3) -> Color {
+    let nx = ray_direction.x * 30.0;
+    let ny = ray_direction.y * 30.0;
+    let nz = ray_direction.z * 30.0;
+    
+    let noise3d = |sx: f32, sy: f32, sz: f32| -> f32 {
+        let n1 = noise(sx, sy);
+        let n2 = noise(sy + 12.3, sz + 45.6);
+        let n3 = noise(sz - 78.9, sx - 12.3);
+        (n1 + n2 + n3) / 3.0
+    };
+    
+    // FBM (Fractal Brownian Motion)
+    let n1 = noise3d(nx, ny, nz);
+    let n2 = noise3d(nx * 2.0, ny * 2.0, nz * 2.0) * 0.5;
+    let n3 = noise3d(nx * 4.0, ny * 4.0, nz * 4.0) * 0.25;
+    
+    let total_noise = (n1 + n2 + n3) / 1.75;
+    
+    // Add "static" grain for retro feel
+    let qx = (ray_direction.x * 600.0).round();
+    let qy = (ray_direction.y * 600.0).round();
+    let qz = (ray_direction.z * 600.0).round();
+    let seed = qx * 12.9898 + qy * 78.233 + qz * 37.719;
+    let grain = (seed.sin() * 43758.5453).fract().abs() * 0.15;
+    
+    // Create organic contrast by powering the noise
+    let final_noise = ((total_noise.powi(2) * 1.5) + grain).clamp(0.0, 1.0);
+    
+    // Color palette: Dark Purple to Brighter Purple/Magenta
+    let dark = Color::new(12, 5, 20);
+    let mid = Color::new(60, 15, 80);
+    let bright = Color::new(130, 40, 160);
+    
+    if final_noise < 0.5 {
+        let t = final_noise * 2.0;
+        dark * (1.0 - t) + mid * t
+    } else {
+        let t = (final_noise - 0.5) * 2.0;
+        mid * (1.0 - t) + bright * t
+    }
+}

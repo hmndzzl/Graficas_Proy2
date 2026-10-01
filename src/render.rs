@@ -3,7 +3,7 @@ use crate::color::Color;
 use crate::framebuffer::Framebuffer;
 use crate::light::Light;
 use crate::ray_intersect::{Intersect, RayIntersect};
-use crate::sky::{get_sky_color, noise};
+use crate::sky::{get_sky_color, get_end_sky_color, noise};
 use nalgebra_glm::{dot, normalize, Vec3};
 use rayon::prelude::*;
 use std::f32::consts::PI;
@@ -31,8 +31,7 @@ fn background_color(ray_direction: &Vec3, time_of_day: f32, sky_mode: SkyMode) -
                 + Color::new(35, 8, 5) * (1.0 - ceiling_darkness) * 0.35
         }
         SkyMode::End => {
-            // Un vacío oscuro estelar
-            Color::new(10, 5, 20)
+            get_end_sky_color(ray_direction)
         }
     }
 }
