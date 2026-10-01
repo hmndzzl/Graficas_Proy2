@@ -88,6 +88,10 @@ impl RayIntersect for VoxelGrid {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
+    
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 pub struct World {
@@ -135,5 +139,15 @@ impl RayIntersect for World {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+    
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+    
+    fn update(&mut self, time: f32) {
+        for entity in &mut self.entities {
+            entity.update(time);
+        }
     }
 }

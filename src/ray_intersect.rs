@@ -85,4 +85,6 @@ pub struct Intersect {
 pub trait RayIntersect: Sync + Send {
     fn ray_intersect(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Option<Intersect>;
     fn as_any(&self) -> &dyn std::any::Any;
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+    fn update(&mut self, _time: f32) {}
 }
