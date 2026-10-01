@@ -39,6 +39,9 @@ pub fn build_inventory(texture_atlas: &Arc<Texture>) -> Vec<(&'static str, Mater
     let glass_mat = Material::new(Color::new(200, 220, 255), 50.0, [0.8, 0.4, 0.1, 0.8])
         .with_refractive_index(1.5);
     let leaves_mat = tex_mat(texture_atlas, 4.0, 12.0);
+    let gold_mat = Material::new(Color::new(255, 255, 255), 80.0, [0.8, 0.5, 0.2, 0.0])
+        .with_texture(Arc::clone(texture_atlas))
+        .with_uv((1.0 / 16.0, 1.0 / 16.0), (7.0 / 16.0, 14.0 / 16.0));
 
     vec![
         ("Césped", grass_mat),
@@ -47,7 +50,7 @@ pub fn build_inventory(texture_atlas: &Arc<Texture>) -> Vec<(&'static str, Mater
         ("Hojas", leaves_mat),
         ("Cristal", glass_mat),
         ("Ladrillos", tex_mat_from_top(texture_atlas, 6.0, 3.0)),
-        ("L. Musgoso", tex_mat_from_top(texture_atlas, 4.0, 6.0)),
+        ("Oro", gold_mat),
         ("L. Roto", tex_mat_from_top(texture_atlas, 5.0, 6.0)),
         ("Obsidiana", obsidian_mat(texture_atlas)),
     ]
@@ -63,9 +66,6 @@ pub fn build_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn Ray
     let grass_top = tex_mat(texture_atlas, 0.0, 15.0);
     let dirt_mat = tex_mat(texture_atlas, 2.0, 15.0);
     let stone_mat = tex_mat(texture_atlas, 1.0, 15.0);
-    let gold_mat = Material::new(Color::new(255, 255, 255), 80.0, [0.8, 0.5, 0.2, 0.0])
-        .with_texture(Arc::clone(texture_atlas))
-        .with_uv((1.0 / 16.0, 1.0 / 16.0), (7.0 / 16.0, 14.0 / 16.0));
     let diamond_ore_mat = Material::new(Color::new(255, 255, 255), 20.0, [0.8, 0.2, 0.0, 0.0])
         .with_texture(Arc::clone(texture_atlas))
         .with_uv((1.0 / 16.0, 1.0 / 16.0), (2.0 / 16.0, 12.0 / 16.0));
@@ -91,7 +91,6 @@ pub fn build_diorama(texture_atlas: &Arc<Texture>, seed: u64) -> Vec<Box<dyn Ray
     let bookshelf_mat = tex_mat_from_top(texture_atlas, 3.0, 2.0);
     
     // End Portal Materials
-    let end_stone_mat = tex_mat_from_top(texture_atlas, 15.0, 10.0);
     let end_frame_top = tex_mat_from_top(texture_atlas, 14.0, 9.0);
     let end_frame_bot = tex_mat_from_top(texture_atlas, 15.0, 10.0);
     // Custom UV for side to avoid the top 3 transparent pixels (white stripe)
@@ -691,22 +690,6 @@ fn is_cave_void(x: i32, y: i32, z: i32) -> bool {
     in_mega_cave || in_tunnel || in_window
 }
 
-fn add_box(objects: &mut Vec<Box<dyn RayIntersect>>, min: Vec3, max: Vec3, material: Material) {
-    let first_x = (min.x + 0.5).round() as i32;
-    let first_y = (min.y + 0.5).round() as i32;
-    let first_z = (min.z + 0.5).round() as i32;
-    let last_x = (max.x - 0.5).round() as i32;
-    let last_y = (max.y - 0.5).round() as i32;
-    let last_z = (max.z - 0.5).round() as i32;
-
-    for x in first_x..=last_x {
-        for y in first_y..=last_y {
-            for z in first_z..=last_z {
-                objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, material.clone())));
-            }
-        }
-    }
-}
 
 fn add_lake(objects: &mut Vec<Box<dyn RayIntersect>>, water_mat: &Material) {
     // Un lago gigante en la parte frontal-izquierda de la isla (-X)
@@ -1003,30 +986,6 @@ fn add_tree(objects: &mut Vec<Box<dyn RayIntersect>>, x: i32, z: i32, height: i3
     }
 }
 
-fn add_nether_fungus(
-    objects: &mut Vec<Box<dyn RayIntersect>>,
-    x: i32,
-    z: i32,
-    height: i32,
-    stem: &Material,
-    wart: &Material,
-) {
-    for y in 1..=height {
-        objects.push(Box::new(unit_cube(x as f32, y as f32, z as f32, stem.clone())));
-    }
-    for dx in -2i32..=2 {
-        for dz in -2i32..=2 {
-            if dx.abs() + dz.abs() > 3 || (dx == 0 && dz == 0) {
-                continue;
-            }
-            objects.push(Box::new(unit_cube((x + dx) as f32, (height + 1) as f32, (z + dz) as f32, wart.clone())));
-            if dx.abs() + dz.abs() <= 2 {
-                objects.push(Box::new(unit_cube((x + dx) as f32, (height + 2) as f32, (z + dz) as f32, wart.clone())));
-            }
-        }
-    }
-    objects.push(Box::new(unit_cube(x as f32, (height + 2) as f32, z as f32, wart.clone())));
-}
 
 fn add_portal_structure(
     objects: &mut Vec<Box<dyn RayIntersect>>,
