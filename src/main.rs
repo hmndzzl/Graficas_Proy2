@@ -34,8 +34,8 @@ use voxel_grid::World;
 
 mod pig;
 
-const WIDTH: usize = 800;
-const HEIGHT: usize = 600;
+const WIDTH: usize = 1280;
+const HEIGHT: usize = 720;
 const ROTATION_SPEED: f32 = PI / 60.0;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -157,6 +157,7 @@ fn main() {
             let dist_to_nether_spawn = (camera.eye - Vec3::new(-0.5, 3.0, -14.0)).magnitude();
             let dist_to_end_spawn = (camera.eye - Vec3::new(0.0, 4.0, -10.0)).magnitude();
 
+            let previous_realm = realm;
             let mut teleported = false;
             
             if realm == Realm::Overworld {
@@ -185,6 +186,15 @@ fn main() {
 
             if teleported {
                 camera = spawn_camera(realm);
+                if realm == Realm::Overworld {
+                    if previous_realm == Realm::Nether {
+                        camera.eye = Vec3::new(0.5, 5.0, -50.0);
+                        camera.center = Vec3::new(0.5, 3.5, -65.0);
+                    } else if previous_realm == Realm::End {
+                        camera.eye = Vec3::new(-45.0, 5.0, 0.0);
+                        camera.center = Vec3::new(-55.0, 1.0, 0.0);
+                    }
+                }
                 selected_block = None;
                 moved = true;
             }
