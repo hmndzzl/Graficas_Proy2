@@ -254,18 +254,24 @@ fn main() {
                     let light_pos = if is_day { Vec3::new(sun_x, sun_y, 8.0) } else { Vec3::new(-sun_x, -sun_y, -8.0) };
                     (
                         vec![
-                            Light::new(light_pos, light_color, intensity),
-                            Light::new(Vec3::new(0.0, -3.0, 1.5), Color::new(255, 120, 0), 2.3),
-                            Light::new(Vec3::new(7.5, 3.5, 3.0), Color::new(185, 65, 255), 0.55),
+                            Light::new(light_pos, light_color, intensity, 1000.0),
+                            // Lava light
+                            Light::new(Vec3::new(0.0, -3.0, 1.5), Color::new(255, 120, 0), 2.3, 10.0),
+                            // Portal lights (front and back)
+                            Light::new(Vec3::new(7.5, 3.5, 5.0), Color::new(200, 50, 255), 2.5, 8.0),
+                            Light::new(Vec3::new(7.5, 3.5, 3.0), Color::new(200, 50, 255), 2.5, 8.0),
                         ],
                         SkyMode::Overworld,
                     )
                 }
                 Realm::Nether => (
                     vec![
-                        Light::new(Vec3::new(4.5, 2.5, 0.0), Color::new(255, 70, 12), 2.6),
-                        Light::new(Vec3::new(-2.5, 7.0, -1.0), Color::new(255, 160, 55), 1.5),
-                        Light::new(Vec3::new(-0.5, 3.5, 3.0), Color::new(185, 65, 255), 0.7),
+                        // Lava lights
+                        Light::new(Vec3::new(4.5, 2.5, 0.0), Color::new(255, 70, 12), 2.6, 10.0),
+                        Light::new(Vec3::new(-2.5, 7.0, -1.0), Color::new(255, 160, 55), 1.5, 8.0),
+                        // Portal lights (front and back)
+                        Light::new(Vec3::new(-0.5, 3.5, 5.0), Color::new(200, 50, 255), 2.5, 8.0),
+                        Light::new(Vec3::new(-0.5, 3.5, 3.0), Color::new(200, 50, 255), 2.5, 8.0),
                     ],
                     SkyMode::Nether,
                 ),
