@@ -14,10 +14,11 @@ Diorama estilo Minecraft renderizado 100% con raytracing por software en CPU, es
 *   **Raytracing Físicamente Basado:** 
     *   **Refracción y Transparencia:** El agua y el cristal refractan la luz de manera realista, mostrando la superficie gracias a su albedo ajustado.
     *   **Materiales Emisivos:** La lava, la glowstone y los cristales del End emiten su propia luz para iluminar la escena.
+    *   **Texturas Animadas:** Los portales cuentan con un efecto visual de cascada mediante el desplazamiento continuo de coordenadas UV en tiempo real.
     *   **Sombras:** Sombras duras precisas generadas mediante raycasting al sol/fuentes de luz.
 *   **Cielo Procedimental:** El cielo cambia dinámicamente. El Overworld tiene ciclo día/noche; el Nether una niebla volcánica rojiza; y el End cuenta con una textura nebulosa generada proceduralmente usando Fractal Brownian Motion (FBM) y ruido estático 3D.
 *   **Audio Espacial y Música:** Integración con la librería `rodio` para reproducir música ambiental dinámica que cambia dependiendo de la dimensión en la que te encuentres.
-*   **Optimizado con Rayon:** Renderizado multihilo para procesar los rayos en paralelo, con resolución adaptativa que escala dinámicamente cuando la cámara se mueve para mantener fluidez.
+*   **Optimizado con Rayon y Estructuras de Aceleración:** Renderizado multihilo para procesar los rayos en paralelo y uso de `VoxelGrid` para gestionar y renderizar más de **290,000 bloques concurrentes** a tasas de FPS jugables.
 
 ## Librerías Utilizadas
 
