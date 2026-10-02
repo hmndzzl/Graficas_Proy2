@@ -91,11 +91,17 @@ pub fn shade(
     ray_origin: &Vec3,
     lights: &[Light],
     world: &dyn RayIntersect,
+    time_ms: u32,
 ) -> Color {
     let base_color = match &intersect.material.texture {
         Some(texture) => {
             let mut u = intersect.u;
             let mut v = intersect.v;
+            
+            if intersect.material.is_portal {
+                let offset = (time_ms % 1500) as f32 / 1500.0;
+                v = (v + offset) % 1.0;
+            }
             
             if intersect.material.uv_rotated {
                 let temp = u;
@@ -157,6 +163,7 @@ pub fn cast_ray(
     time_of_day: f32,
     selected_voxel: Option<[i32; 3]>,
     sky_mode: SkyMode,
+    time_ms: u32,
 ) -> Color {
     if depth > MAX_DEPTH {
         return background_color(ray_direction, time_of_day, sky_mode);
@@ -176,7 +183,7 @@ pub fn cast_ray(
         intersect.normal = (intersect.normal + Vec3::new(nx - 0.5, 0.0, nz - 0.5) * 0.3).normalize();
     }
 
-    let mut color = shade(&intersect, ray_origin, lights, world);
+    let mut color = shade(&intersect, ray_origin, lights, world, time_ms);
 
     if let Some(voxel) = selected_voxel {
         let hit_voxel = [
@@ -210,6 +217,7 @@ pub fn cast_ray(
             time_of_day,
             None,
             sky_mode,
+            time_ms,
         );
         final_color = final_color + reflected * reflectivity;
     }
@@ -229,6 +237,7 @@ pub fn cast_ray(
             time_of_day,
             None,
             sky_mode,
+            time_ms,
         );
         final_color = final_color + refracted * transparency;
     }
@@ -257,6 +266,7 @@ pub fn render(
     block_size: usize,
     selected_voxel: Option<[i32; 3]>,
     sky_mode: SkyMode,
+    time_ms: u32,
 ) {
     let width = framebuffer.width;
     let height = framebuffer.height;
@@ -293,6 +303,7 @@ pub fn render(
                 time_of_day,
                 selected_voxel,
                 sky_mode,
+                time_ms,
             )
             .to_hex()
         })

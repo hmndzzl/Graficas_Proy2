@@ -92,6 +92,10 @@ fn main() {
     let mut last_pig_sfx_time = 0;
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        let time_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
         let mut moved = false;
 
         if window.is_key_pressed(Key::D, minifb::KeyRepeat::No) {
@@ -398,6 +402,7 @@ fn main() {
             block_size,
             selected_voxel,
             sky_mode,
+            time_ms as u32,
         );
 
         draw_ui(&mut framebuffer, &inventory, active_block_index);
@@ -427,10 +432,6 @@ fn main() {
         );
 
         // Random pig sfx
-        let time_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
         if time_ms - last_pig_sfx_time > 4000 && !in_other_dimension {
             audio_manager.play_pig_sfx();
             last_pig_sfx_time = time_ms;
