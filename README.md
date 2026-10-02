@@ -4,7 +4,7 @@
 
 Diorama estilo Minecraft renderizado 100% con raytracing por software en CPU, escrito en Rust. Este proyecto recrea una porción del universo de Minecraft con iluminación global, reflejos, refracciones y sombras precisas generadas a través de trazado de rayos.
 
-![Vista general del Diorama](URL_DE_IMAGEN_GENERAL_AQUI)
+![Vista general del Diorama](<img width="1276" height="718" alt="image" src="https://github.com/user-attachments/assets/a42e6681-8d48-4d22-b249-25ba98965d69" />)
 
 ## Características Principales
 
