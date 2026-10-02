@@ -99,7 +99,7 @@ pub fn shade(
             let mut v = intersect.v;
             
             if intersect.material.is_portal {
-                let offset = (time_ms % 1500) as f32 / 1500.0;
+                let offset = (time_ms % 4000) as f32 / 4000.0;
                 v = (v + offset) % 1.0;
             }
             
