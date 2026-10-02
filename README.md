@@ -4,8 +4,7 @@
 
 Diorama estilo Minecraft renderizado 100% con raytracing por software en CPU, escrito en Rust. Este proyecto recrea una porción del universo de Minecraft con iluminación global, reflejos, refracciones y sombras precisas generadas a través de trazado de rayos.
 
-![Vista general del Diorama](<img width="1276" height="718" alt="image" src="https://github.com/user-attachments/assets/a42e6681-8d48-4d22-b249-25ba98965d69" />)
-
+<img width="1276" height="718" alt="image" src="https://github.com/user-attachments/assets/8ae28149-6893-4509-911b-12ae33bc314e" />
 ## Características Principales
 
 *   **Tres Dimensiones Interconectadas:** Explora el **Overworld** (con su cabaña, bosque y lago), viaja al **Nether** (con su bosque carmesí, basalto y mares de lava), y aventúrate al **End** (con sus pilares de obsidiana, cristales y cielo procedimental).
