@@ -4,7 +4,8 @@
 
 Diorama estilo Minecraft renderizado 100% con raytracing por software en CPU, escrito en Rust. Este proyecto recrea una porción del universo de Minecraft con iluminación global, reflejos, refracciones y sombras precisas generadas a través de trazado de rayos.
 
-<img width="1276" height="718" alt="image" src="https://github.com/user-attachments/assets/8ae28149-6893-4509-911b-12ae33bc314e" />
+<img width="1276" height="714" alt="image" src="https://github.com/user-attachments/assets/34741b21-6a97-4cd5-9eb8-1fa0544861c3" />
+
 ## Características Principales
 
 *   **Tres Dimensiones Interconectadas:** Explora el **Overworld** (con su cabaña, bosque y lago), viaja al **Nether** (con su bosque carmesí, basalto y mares de lava), y aventúrate al **End** (con sus pilares de obsidiana, cristales y cielo procedimental).
@@ -143,11 +144,13 @@ Cada material tiene su propia textura (extraída del atlas de texturas) y parám
 ## Galería
 
 ### El Overworld
-![Overworld de día](URL_IMAGEN_OVERWORLD_DIA_AQUI)
-![Overworld de noche](URL_IMAGEN_OVERWORLD_NOCHE_AQUI)
+<img width="1275" height="713" alt="image" src="https://github.com/user-attachments/assets/43e211bd-83dc-41b3-afc4-2e48756e3ed8" />
+
+<img width="1276" height="718" alt="image" src="https://github.com/user-attachments/assets/8ae28149-6893-4509-911b-12ae33bc314e" />
 
 ### El Nether
-![Nether](URL_IMAGEN_NETHER_AQUI)
+<img width="1270" height="710" alt="image" src="https://github.com/user-attachments/assets/5525a707-2ff2-4b35-858f-9e051430cad2" />
 
 ### El End
-![End](URL_IMAGEN_END_AQUI)
+<img width="1274" height="718" alt="image" src="https://github.com/user-attachments/assets/d1f2c5d4-fa6c-4baf-bbb0-9cb965ddef82" />
+
