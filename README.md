@@ -1,10 +1,11 @@
 # Graficas_Proy2 - Minecraft Diorama Raytracer
 
-[![Video del diorama](https://youtu.be/zlFKC8qfUyQ)](#)
 
 Diorama estilo Minecraft renderizado 100% con raytracing por software en CPU, escrito en Rust. Este proyecto recrea una porción del universo de Minecraft con iluminación global, reflejos, refracciones y sombras precisas generadas a través de trazado de rayos.
 
 <img width="1276" height="714" alt="image" src="https://github.com/user-attachments/assets/34741b21-6a97-4cd5-9eb8-1fa0544861c3" />
+
+Link del video de demostración: https://youtu.be/zlFKC8qfUyQ
 
 ## Características Principales
 
